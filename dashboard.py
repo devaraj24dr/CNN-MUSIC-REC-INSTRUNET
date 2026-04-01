@@ -22,6 +22,10 @@ from torchvision import models
 import numpy as np
 import pandas as pd
 import librosa
+import librosa.display
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import streamlit as st
 import plotly.graph_objects as go
 
@@ -146,6 +150,39 @@ def apply_theme(fig, is_dark, height=400, title="", x_title="", y_title="", show
 # ============================================
 # LOAD MODEL BUNDLE
 # ============================================
+class CustomCNN(nn.Module):
+    def __init__(self, num_classes=11):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, num_classes)
+        )
+
+    def forward(self, x):
+        return self.classifier(self.features(x))
+
 @st.cache_resource
 def load_model_bundle():
     pkl_path = os.path.join(os.path.dirname(__file__), "models", "instrument_classifier_full.pkl")
@@ -153,15 +190,8 @@ def load_model_bundle():
         bundle = pickle.load(f)
 
     num_classes = bundle["architecture_config"]["num_classes"]
-    model = models.efficientnet_b0(weights=None)
-    num_features = model.classifier[1].in_features
-    model.classifier = nn.Sequential(
-        nn.Dropout(0.4),
-        nn.Linear(num_features, 256),
-        nn.ReLU(),
-        nn.Dropout(0.3),
-        nn.Linear(256, num_classes),
-    )
+    model = CustomCNN(num_classes=num_classes)
+    
     model.load_state_dict(bundle["model_state_dict"])
     model.eval()
     return model, bundle
@@ -202,7 +232,12 @@ def preprocess_audio(audio_bytes, config):
         else:
             mel_db = mel_db[:, :target_w]
 
-        spec = np.stack([mel_db, mel_db, mel_db], axis=0)
+        channels = config.get("channels", 1)
+        if channels == 3:
+            spec = np.stack([mel_db, mel_db, mel_db], axis=0)
+        else:
+            spec = np.expand_dims(mel_db, axis=0)
+            
         tensor = torch.tensor(spec, dtype=torch.float32).unsqueeze(0)
         all_tensors.append(tensor)
 
@@ -597,38 +632,54 @@ def main():
         viz_col1, viz_col2 = st.columns(2)
 
         with viz_col1:
-            # Waveform
-            t_axis = np.linspace(0, len(audio_signal) / audio_sr, len(audio_signal))
-            step = max(1, len(audio_signal) // 6000)
-            t_ds, audio_ds = t_axis[::step], audio_signal[::step]
-
-            fig_wave = go.Figure()
-            fig_wave.add_trace(go.Scatter(
-                x=t_ds, y=audio_ds, mode="lines",
-                line=dict(width=1, color=INSTRUMENT_COLORS[0]),
-                fill="tozeroy", fillcolor="rgba(88, 166, 255, 0.08)",
-                hovertemplate="<b>Time:</b> %{x:.3f}s<br><b>Amplitude:</b> %{y:.4f}<extra></extra>",
-            ))
-            fig_wave = apply_theme(fig_wave, is_dark, height=320, title="📈 Waveform",
-                                   x_title="Time (s)", y_title="Amplitude", show_legend=False)
-            st.plotly_chart(fig_wave, use_container_width=True)
+            # Waveform Image
+            fig_wave, ax_wave = plt.subplots(figsize=(6, 3), facecolor="#0d1117" if is_dark else "#f6f8fa")
+            ax_wave.set_facecolor("#161b22" if is_dark else "#ffffff")
+            librosa.display.waveshow(y=audio_signal, sr=audio_sr, ax=ax_wave, color="#58a6ff" if is_dark else "#1f77b4")
+            ax_wave.set_title("📈 Waveform", color="#e6edf3" if is_dark else "#1f2328", fontsize=12, pad=10, fontweight="bold")
+            ax_wave.set_xlabel("Time (s)", color="#8b949e" if is_dark else "#656d76", fontsize=9)
+            ax_wave.set_ylabel("Amplitude", color="#8b949e" if is_dark else "#656d76", fontsize=9)
+            ax_wave.tick_params(colors="#8b949e" if is_dark else "#656d76", labelsize=8)
+            for spine in ax_wave.spines.values():
+                spine.set_color("#30363d" if is_dark else "#d0d7de")
+            fig_wave.tight_layout()
+            
+            buf_wave = io.BytesIO()
+            fig_wave.savefig(buf_wave, format="png", dpi=120, bbox_inches="tight")
+            plt.close(fig_wave)
+            
+            st.image(buf_wave, use_column_width=True)
 
         with viz_col2:
-            # Mel Spectrogram
+            # Mel Spectrogram Image
             mel_spec = librosa.feature.melspectrogram(y=audio_signal, sr=audio_sr, n_mels=128, hop_length=512)
             mel_db = librosa.power_to_db(mel_spec, ref=np.max)
-            times = librosa.times_like(mel_db, sr=audio_sr, hop_length=512)
-            freqs = librosa.mel_frequencies(n_mels=128, fmin=0, fmax=audio_sr / 2)
-
-            fig_spec = go.Figure(go.Heatmap(
-                z=mel_db, x=times, y=freqs,
-                colorscale="Magma",
-                colorbar=dict(title=dict(text="dB", font=dict(color="#8b949e")), tickfont=dict(color="#8b949e")),
-                hovertemplate="<b>Time:</b> %{x:.2f}s<br><b>Freq:</b> %{y:.0f} Hz<br><b>Power:</b> %{z:.1f} dB<extra></extra>",
-            ))
-            fig_spec = apply_theme(fig_spec, is_dark, height=320, title="🌈 Mel Spectrogram",
-                                   x_title="Time (s)", y_title="Frequency (Hz)", show_legend=False)
-            st.plotly_chart(fig_spec, use_container_width=True)
+            
+            fig_spec, ax_spec = plt.subplots(figsize=(6, 3), facecolor="#0d1117" if is_dark else "#f6f8fa")
+            ax_spec.set_facecolor("#161b22" if is_dark else "#ffffff")
+            img = librosa.display.specshow(mel_db, x_axis='time', y_axis='mel', sr=audio_sr, hop_length=512, cmap='magma', ax=ax_spec)
+            
+            ax_spec.set_title("🌈 Mel Spectrogram", color="#e6edf3" if is_dark else "#1f2328", fontsize=12, pad=10, fontweight="bold")
+            ax_spec.set_xlabel("Time (s)", color="#8b949e" if is_dark else "#656d76", fontsize=9)
+            ax_spec.set_ylabel("Hz", color="#8b949e" if is_dark else "#656d76", fontsize=9)
+            ax_spec.tick_params(colors="#8b949e" if is_dark else "#656d76", labelsize=8)
+            
+            # Subtly darker spines
+            for spine in ax_spec.spines.values():
+                spine.set_color("#30363d" if is_dark else "#d0d7de")
+            
+            # Optional colorbar matching the theme
+            cbar = fig_spec.colorbar(img, ax=ax_spec, format='%+2.0f dB')
+            cbar.ax.tick_params(colors="#8b949e" if is_dark else "#656d76", labelsize=8)
+            cbar.outline.set_edgecolor("#30363d" if is_dark else "#d0d7de")
+            
+            fig_spec.tight_layout()
+            
+            buf_spec = io.BytesIO()
+            fig_spec.savefig(buf_spec, format="png", dpi=120, bbox_inches="tight")
+            plt.close(fig_spec)
+            
+            st.image(buf_spec, use_column_width=True)
 
         st.markdown("")
 
@@ -772,5 +823,213 @@ def main():
     )
 
 
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    # Initialize session state for user database and mode
+    if "users" not in st.session_state:
+        st.session_state["users"] = {"admin": "admin123"}
+    if "login_mode" not in st.session_state:
+        st.session_state["login_mode"] = "login"
+
+    def form_submitted():
+        mode = st.session_state["login_mode"]
+        if mode == "login":
+            u = st.session_state.get("username", "")
+            p = st.session_state.get("password", "")
+            if u in st.session_state["users"] and st.session_state["users"][u] == p:
+                st.session_state["password_correct"] = True
+                del st.session_state["password"]  
+                del st.session_state["username"]
+            else:
+                st.session_state["password_correct"] = False
+        else:
+            u = st.session_state.get("reg_username", "")
+            p = st.session_state.get("reg_password", "")
+            c = st.session_state.get("reg_confirm", "")
+            if not u or not p:
+                st.session_state["signup_error"] = "Please fill in all fields."
+            elif p != c:
+                st.session_state["signup_error"] = "Passwords do not match."
+            elif u in st.session_state["users"]:
+                st.session_state["signup_error"] = "Account already exists."
+            else:
+                st.session_state["users"][u] = p
+                st.session_state["login_mode"] = "login"
+                st.session_state["signup_success"] = True
+                st.session_state["password_correct"] = None
+
+    def toggle_mode():
+        st.session_state["login_mode"] = "signup" if st.session_state["login_mode"] == "login" else "login"
+        st.session_state["password_correct"] = None
+
+    # Apply global dark theme mirroring the sleek ChatGPT login approach
+    st.markdown(
+        """
+        <style>
+        .stApp { background-color: #202123 !important; color: #ffffff !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; }
+        .login-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 15vh;
+        }
+        .login-container {
+            width: 100%;
+            max-width: 320px;
+            text-align: center; margin: auto;
+        }
+        .login-logo {
+            margin-bottom: 2rem;
+            display: inline-block;
+        }
+        .login-container h2 {
+            color: #ffffff;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        /* Flatten Streamlit form to look like generic inputs */
+        [data-testid="stForm"] {
+            border: none !important;
+            padding: 0 !important;
+            background-color: transparent !important;
+            box-shadow: none !important;
+        }
+        /* Custom Inputs */
+        [data-testid="stTextInput"] input {
+            background-color: transparent !important;
+            border: 1px solid #4d4d4f !important;
+            color: #ffffff !important;
+            border-radius: 4px !important;
+            padding: 14px 16px !important;
+            font-size: 16px !important;
+            transition: border-color 0.15s ease-in-out !important;
+            margin-bottom: 0.2rem;
+        }
+        [data-testid="stTextInput"] input:focus {
+            border-color: #10a37f !important;
+            box-shadow: none !important;
+        }
+        /* Primary Button inside form */
+        [data-testid="stForm"] .stButton>button {
+            width: 100%;
+            background-color: #10a37f !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 4px !important;
+            padding: 14px !important;
+            font-weight: 500 !important;
+            font-size: 16px !important;
+            margin-top: 1.5rem !important;
+            transition: background-color 0.2s !important;
+        }
+        [data-testid="stForm"] .stButton>button:hover {
+            background-color: #1a7f64 !important;
+        }
+        /* Toggle Buttons outside form */
+        .login-container .stButton>button {
+            width: 100%;
+            background-color: transparent !important;
+            color: #10a37f !important;
+            border: none !important;
+            padding: 8px !important;
+            font-size: 14px !important;
+            box-shadow: none !important;
+        }
+        .login-container .stButton>button:hover {
+            text-decoration: underline !important;
+        }
+
+        .error-message {
+            background-color: rgba(239,68,68, 0.1);
+            color: #ef4444;
+            border: 1px solid rgba(239,68,68, 0.3);
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: left;
+            margin-bottom: 1rem;
+        }
+        .success-message {
+            background-color: rgba(16,163,127, 0.1);
+            color: #10a37f;
+            border: 1px solid rgba(16,163,127, 0.3);
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: left;
+            margin-bottom: 1rem;
+        }
+        .toggle-text {
+            color: #8e8ea0;
+            font-size: 14px;
+            margin-top: 2rem;
+            margin-bottom: -0.5rem;
+        }
+        </style>
+        """, unsafe_allow_html=True
+    )
+
+    logo_svg = '''
+    <div class="login-logo">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2.5L2 7.5L12 12.5L22 7.5L12 2.5Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M2 16.5L12 21.5L22 16.5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M2 11.5L12 16.5L22 11.5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+    </div>
+    '''
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    mode = st.session_state["login_mode"]
+
+    st.markdown('<div class="login-wrapper"><div class="login-container">', unsafe_allow_html=True)
+    st.markdown(logo_svg, unsafe_allow_html=True)
+
+    if mode == "login":
+        st.markdown('<h2>Welcome back</h2>', unsafe_allow_html=True)
+        
+        if st.session_state.get("signup_success", False):
+            st.markdown('<div class="success-message">Account created! Please log in.</div>', unsafe_allow_html=True)
+            st.session_state["signup_success"] = False # read-once indicator
+
+        if st.session_state.get("password_correct") == False:
+            st.markdown('<div class="error-message">Wrong email or password. Try again.</div>', unsafe_allow_html=True)
+
+        with st.form("login_form"):
+            st.text_input("Username", key="username", placeholder="Email address", label_visibility="collapsed")
+            st.text_input("Password", type="password", key="password", placeholder="Password", label_visibility="collapsed")
+            st.form_submit_button("Continue", on_click=form_submitted)
+
+        st.markdown('<div class="toggle-text">Don\'t have an account?</div>', unsafe_allow_html=True)
+        st.button("Sign up", on_click=toggle_mode, key="toggle_signup")
+
+    else:
+        st.markdown('<h2>Create your account</h2>', unsafe_allow_html=True)
+
+        if "signup_error" in st.session_state and st.session_state["signup_error"]:
+            st.markdown(f'<div class="error-message">{st.session_state["signup_error"]}</div>', unsafe_allow_html=True)
+            st.session_state["signup_error"] = None # read-once indicator
+
+        with st.form("signup_form"):
+            st.text_input("Email", key="reg_username", placeholder="Email address", label_visibility="collapsed")
+            st.text_input("Password", type="password", key="reg_password", placeholder="Password", label_visibility="collapsed")
+            st.text_input("Confirm", type="password", key="reg_confirm", placeholder="Confirm Password", label_visibility="collapsed")
+            st.form_submit_button("Continue", on_click=form_submitted)
+            
+        st.markdown('<div class="toggle-text">Already have an account?</div>', unsafe_allow_html=True)
+        st.button("Log in", on_click=toggle_mode, key="toggle_login")
+
+    st.markdown('</div></div>', unsafe_allow_html=True)
+    return False
+
+
 if __name__ == "__main__":
-    main()
+    if check_password():
+        main()

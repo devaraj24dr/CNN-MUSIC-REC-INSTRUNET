@@ -17,18 +17,15 @@ from sklearn.preprocessing import LabelEncoder
 # ===============================
 # 1. Paths
 # ===============================
-MODEL_DIR = r"D:\AI ONBOARDING ENGINE TT\cnn_music_instrument_recognition\models"
-PTH_PATH = os.path.join(MODEL_DIR, "instrument_classifier_best.pth")
-LABELS_PATH = os.path.join(MODEL_DIR, "label_classes.json")
-EVAL_PATH = os.path.join(MODEL_DIR, "evaluation_results.json")
+ROOT_DIR = r"D:\AI ONBOARDING ENGINE TT\cnn_music_instrument_recognition"
+MODEL_DIR = os.path.join(ROOT_DIR, "models")
+PTH_PATH = os.path.join(ROOT_DIR, "instrument_classifier_best.pth")
 PKL_OUTPUT = os.path.join(MODEL_DIR, "instrument_classifier_full.pkl")
 
 # ===============================
-# 2. Load class labels
+# 2. Hardcode class labels
 # ===============================
-with open(LABELS_PATH, "r") as f:
-    class_names = json.load(f)
-
+class_names = ["cel", "cla", "flu", "gac", "gel", "org", "pia", "sax", "tru", "vio", "voi"]
 print(f"Classes ({len(class_names)}): {class_names}")
 
 # ===============================
@@ -38,28 +35,49 @@ label_encoder = LabelEncoder()
 label_encoder.classes_ = np.array(class_names)
 
 # ===============================
-# 4. Load evaluation results
+# 4. Load evaluation results (Mocked if missing)
 # ===============================
 eval_results = {}
-if os.path.exists(EVAL_PATH):
-    with open(EVAL_PATH, "r") as f:
-        eval_results = json.load(f)
-    print(f"Evaluation results loaded (accuracy: {eval_results.get('accuracy', 'N/A')})")
 
 # ===============================
 # 5. Rebuild model architecture
 # ===============================
 device = torch.device("cpu")  # Save on CPU for portability
 
-model = models.efficientnet_b0(weights=None)
-num_features = model.classifier[1].in_features
-model.classifier = nn.Sequential(
-    nn.Dropout(0.4),
-    nn.Linear(num_features, 256),
-    nn.ReLU(),
-    nn.Dropout(0.3),
-    nn.Linear(256, len(class_names))
-)
+class CustomCNN(nn.Module):
+    def __init__(self, num_classes=11):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, num_classes)
+        )
+
+    def forward(self, x):
+        return self.classifier(self.features(x))
+
+model = CustomCNN(num_classes=len(class_names))
 
 # Load trained weights
 model.load_state_dict(torch.load(PTH_PATH, map_location=device))
@@ -89,11 +107,11 @@ INSTRUMENT_NAMES = {
 preprocessing_config = {
     "sample_rate": 22050,
     "duration_seconds": 3,
-    "n_mels": 224,
-    "hop_length": 256,
-    "target_shape": (224, 224),
-    "normalization": "z-score",       # (x - mean) / (std + 1e-8)
-    "channels": 3,                     # mono spectrogram stacked 3x for EfficientNet
+    "n_mels": 128,
+    "hop_length": 512,
+    "target_shape": (128, 128),
+    "normalization": "z-score",
+    "channels": 1,                     
     "power_to_db_ref": "np.max",
 }
 
@@ -101,16 +119,9 @@ preprocessing_config = {
 # 8. Model architecture config
 # ===============================
 architecture_config = {
-    "backbone": "EfficientNet-B0",
-    "classifier": [
-        {"type": "Dropout", "p": 0.4},
-        {"type": "Linear", "in_features": num_features, "out_features": 256},
-        {"type": "ReLU"},
-        {"type": "Dropout", "p": 0.3},
-        {"type": "Linear", "in_features": 256, "out_features": len(class_names)},
-    ],
+    "backbone": "CustomCNN",
     "num_classes": len(class_names),
-    "input_shape": (3, 224, 224),
+    "input_shape": (1, 128, 128),
 }
 
 # ===============================
@@ -135,9 +146,8 @@ model_bundle = {
     # --- Metadata ---
     "metadata": {
         "framework": "PyTorch",
-        "model_name": "InstruNet-EfficientNet-B0",
+        "model_name": "InstruNet-CustomCNN",
         "version": "1.0",
-        "description": "CNN-based Music Instrument Recognition using EfficientNet-B0 backbone",
         "source_pth": "instrument_classifier_best.pth",
     }
 }

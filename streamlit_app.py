@@ -686,5 +686,213 @@ def main():
     """, unsafe_allow_html=True)
 
 
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    # Initialize session state for user database and mode
+    if "users" not in st.session_state:
+        st.session_state["users"] = {"admin": "admin123"}
+    if "login_mode" not in st.session_state:
+        st.session_state["login_mode"] = "login"
+
+    def form_submitted():
+        mode = st.session_state["login_mode"]
+        if mode == "login":
+            u = st.session_state.get("username", "")
+            p = st.session_state.get("password", "")
+            if u in st.session_state["users"] and st.session_state["users"][u] == p:
+                st.session_state["password_correct"] = True
+                del st.session_state["password"]  
+                del st.session_state["username"]
+            else:
+                st.session_state["password_correct"] = False
+        else:
+            u = st.session_state.get("reg_username", "")
+            p = st.session_state.get("reg_password", "")
+            c = st.session_state.get("reg_confirm", "")
+            if not u or not p:
+                st.session_state["signup_error"] = "Please fill in all fields."
+            elif p != c:
+                st.session_state["signup_error"] = "Passwords do not match."
+            elif u in st.session_state["users"]:
+                st.session_state["signup_error"] = "Account already exists."
+            else:
+                st.session_state["users"][u] = p
+                st.session_state["login_mode"] = "login"
+                st.session_state["signup_success"] = True
+                st.session_state["password_correct"] = None
+
+    def toggle_mode():
+        st.session_state["login_mode"] = "signup" if st.session_state["login_mode"] == "login" else "login"
+        st.session_state["password_correct"] = None
+
+    # Apply global dark theme mirroring the sleek ChatGPT login approach
+    st.markdown(
+        """
+        <style>
+        .stApp { background-color: #202123 !important; color: #ffffff !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; }
+        .login-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 15vh;
+        }
+        .login-container {
+            width: 100%;
+            max-width: 320px;
+            text-align: center; margin: auto;
+        }
+        .login-logo {
+            margin-bottom: 2rem;
+            display: inline-block;
+        }
+        .login-container h2 {
+            color: #ffffff;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        /* Flatten Streamlit form to look like generic inputs */
+        [data-testid="stForm"] {
+            border: none !important;
+            padding: 0 !important;
+            background-color: transparent !important;
+            box-shadow: none !important;
+        }
+        /* Custom Inputs */
+        [data-testid="stTextInput"] input {
+            background-color: transparent !important;
+            border: 1px solid #4d4d4f !important;
+            color: #ffffff !important;
+            border-radius: 4px !important;
+            padding: 14px 16px !important;
+            font-size: 16px !important;
+            transition: border-color 0.15s ease-in-out !important;
+            margin-bottom: 0.2rem;
+        }
+        [data-testid="stTextInput"] input:focus {
+            border-color: #10a37f !important;
+            box-shadow: none !important;
+        }
+        /* Primary Button inside form */
+        [data-testid="stForm"] .stButton>button {
+            width: 100%;
+            background-color: #10a37f !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 4px !important;
+            padding: 14px !important;
+            font-weight: 500 !important;
+            font-size: 16px !important;
+            margin-top: 1.5rem !important;
+            transition: background-color 0.2s !important;
+        }
+        [data-testid="stForm"] .stButton>button:hover {
+            background-color: #1a7f64 !important;
+        }
+        /* Toggle Buttons outside form */
+        .login-container .stButton>button {
+            width: 100%;
+            background-color: transparent !important;
+            color: #10a37f !important;
+            border: none !important;
+            padding: 8px !important;
+            font-size: 14px !important;
+            box-shadow: none !important;
+        }
+        .login-container .stButton>button:hover {
+            text-decoration: underline !important;
+        }
+
+        .error-message {
+            background-color: rgba(239,68,68, 0.1);
+            color: #ef4444;
+            border: 1px solid rgba(239,68,68, 0.3);
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: left;
+            margin-bottom: 1rem;
+        }
+        .success-message {
+            background-color: rgba(16,163,127, 0.1);
+            color: #10a37f;
+            border: 1px solid rgba(16,163,127, 0.3);
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: left;
+            margin-bottom: 1rem;
+        }
+        .toggle-text {
+            color: #8e8ea0;
+            font-size: 14px;
+            margin-top: 2rem;
+            margin-bottom: -0.5rem;
+        }
+        </style>
+        """, unsafe_allow_html=True
+    )
+
+    logo_svg = '''
+    <div class="login-logo">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2.5L2 7.5L12 12.5L22 7.5L12 2.5Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M2 16.5L12 21.5L22 16.5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M2 11.5L12 16.5L22 11.5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+    </div>
+    '''
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    mode = st.session_state["login_mode"]
+
+    st.markdown('<div class="login-wrapper"><div class="login-container">', unsafe_allow_html=True)
+    st.markdown(logo_svg, unsafe_allow_html=True)
+
+    if mode == "login":
+        st.markdown('<h2>Welcome back</h2>', unsafe_allow_html=True)
+        
+        if st.session_state.get("signup_success", False):
+            st.markdown('<div class="success-message">Account created! Please log in.</div>', unsafe_allow_html=True)
+            st.session_state["signup_success"] = False # read-once indicator
+
+        if st.session_state.get("password_correct") == False:
+            st.markdown('<div class="error-message">Wrong email or password. Try again.</div>', unsafe_allow_html=True)
+
+        with st.form("login_form"):
+            st.text_input("Username", key="username", placeholder="Email address", label_visibility="collapsed")
+            st.text_input("Password", type="password", key="password", placeholder="Password", label_visibility="collapsed")
+            st.form_submit_button("Continue", on_click=form_submitted)
+
+        st.markdown('<div class="toggle-text">Don\'t have an account?</div>', unsafe_allow_html=True)
+        st.button("Sign up", on_click=toggle_mode, key="toggle_signup")
+
+    else:
+        st.markdown('<h2>Create your account</h2>', unsafe_allow_html=True)
+
+        if "signup_error" in st.session_state and st.session_state["signup_error"]:
+            st.markdown(f'<div class="error-message">{st.session_state["signup_error"]}</div>', unsafe_allow_html=True)
+            st.session_state["signup_error"] = None # read-once indicator
+
+        with st.form("signup_form"):
+            st.text_input("Email", key="reg_username", placeholder="Email address", label_visibility="collapsed")
+            st.text_input("Password", type="password", key="reg_password", placeholder="Password", label_visibility="collapsed")
+            st.text_input("Confirm", type="password", key="reg_confirm", placeholder="Confirm Password", label_visibility="collapsed")
+            st.form_submit_button("Continue", on_click=form_submitted)
+            
+        st.markdown('<div class="toggle-text">Already have an account?</div>', unsafe_allow_html=True)
+        st.button("Log in", on_click=toggle_mode, key="toggle_login")
+
+    st.markdown('</div></div>', unsafe_allow_html=True)
+    return False
+
+
 if __name__ == "__main__":
-    main()
+    if check_password():
+        main()
