@@ -1,7 +1,7 @@
 # ============================================
-# 🎵 InstruNet Dashboard
+# 🎵 InstruNet Dashboard v2.0
 # CNN-Based Music Instrument Recognition System
-# Premium Dark-Themed Analytics Dashboard
+# Production-Level Analytics Dashboard
 # ============================================
 
 import os
@@ -9,16 +9,12 @@ import io
 import json
 import pickle
 import warnings
+import datetime
 
-# Suppress torch warnings before importing
 warnings.filterwarnings("ignore", category=UserWarning)
-
-import sys
 
 import torch
 import torch.nn as nn
-from torchvision import models
-
 import numpy as np
 import pandas as pd
 import librosa
@@ -28,6 +24,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import streamlit as st
 import plotly.graph_objects as go
+import plotly.express as px
 
 # ============================================
 # PAGE CONFIG
@@ -40,61 +37,196 @@ st.set_page_config(
 )
 
 # ============================================
-# CUSTOM CSS
+# CUSTOM CSS — Production Premium Dark Theme
 # ============================================
-DARK_CSS = """
+CUSTOM_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    .stApp { background-color: #0d1117 !important; color: #e6edf3 !important; font-family: 'Inter', sans-serif !important; }
-    section[data-testid="stSidebar"] { background-color: #161b22 !important; border-right: 1px solid #30363d !important; }
-    section[data-testid="stSidebar"] .stMarkdown p, section[data-testid="stSidebar"] .stMarkdown h1,
-    section[data-testid="stSidebar"] .stMarkdown h2, section[data-testid="stSidebar"] .stMarkdown h3 { color: #e6edf3 !important; }
-    h1, h2, h3, h4, h5, h6 { color: #e6edf3 !important; font-family: 'Inter', sans-serif !important; }
-    .section-header { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #8b949e; margin-top: 2rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #21262d; }
-    .metric-card { background: linear-gradient(135deg, #161b22 0%, #1c2333 100%); border: 1px solid #30363d; border-radius: 12px; padding: 1.2rem 1.5rem; transition: all 0.3s ease; position: relative; overflow: hidden; }
-    .metric-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ff6b35, #ff8c42); border-radius: 12px 12px 0 0; }
-    .metric-card:hover { border-color: #ff6b35; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(255, 107, 53, 0.15); }
-    .metric-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #8b949e; margin-bottom: 0.3rem; }
-    .metric-value { font-size: 1.8rem; font-weight: 800; color: #e6edf3; line-height: 1.1; }
-    .metric-sub { font-size: 0.75rem; color: #3fb950; margin-top: 0.3rem; font-weight: 500; }
-    .metric-sub-red { font-size: 0.75rem; color: #f85149; margin-top: 0.3rem; font-weight: 500; }
-    .stPlotlyChart { border-radius: 12px; overflow: hidden; }
-    .stSelectbox label, .stMultiSelect label, .stSlider label { color: #e6edf3 !important; font-weight: 600 !important; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+    /* ---- Base ---- */
+    .stApp {
+        background: #0a0e1a !important;
+        color: #e6edf3 !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    /* ---- Animated gradient blurs ---- */
+    .bg-blur-1, .bg-blur-2 {
+        position: fixed; border-radius: 50%; filter: blur(140px); opacity: 0.18;
+        pointer-events: none; z-index: 0;
+    }
+    .bg-blur-1 { width: 600px; height: 600px; top: -150px; left: -100px;
+        background: radial-gradient(circle, #6366f1 0%, transparent 70%);
+        animation: float1 20s ease-in-out infinite; }
+    .bg-blur-2 { width: 500px; height: 500px; bottom: -120px; right: -80px;
+        background: radial-gradient(circle, #f97316 0%, transparent 70%);
+        animation: float2 24s ease-in-out infinite; }
+    @keyframes float1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(60px,40px)} }
+    @keyframes float2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-50px,-30px)} }
+
+    /* ---- Sidebar ---- */
+    section[data-testid="stSidebar"] {
+        background: rgba(13, 18, 32, 0.95) !important;
+        border-right: 1px solid rgba(99,102,241,0.12) !important;
+    }
+    section[data-testid="stSidebar"] .stMarkdown p,
+    section[data-testid="stSidebar"] .stMarkdown h1,
+    section[data-testid="stSidebar"] .stMarkdown h2,
+    section[data-testid="stSidebar"] .stMarkdown h3 { color: #e6edf3 !important; }
+
+    h1, h2, h3, h4, h5, h6 {
+        color: #e6edf3 !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    /* ---- Section Headers ---- */
+    .section-header {
+        font-size: 0.72rem; font-weight: 700; letter-spacing: 0.18em;
+        text-transform: uppercase; color: #6366f1; margin-top: 2rem;
+        margin-bottom: 1rem; padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    /* ---- Metric Cards ---- */
+    .metric-card {
+        background: rgba(22, 27, 45, 0.7);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(99, 102, 241, 0.15);
+        border-radius: 16px; padding: 1.2rem 1.4rem;
+        position: relative; overflow: hidden;
+        transition: all 0.3s ease;
+        min-height: 100px;
+    }
+    .metric-card::before {
+        content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+        background: linear-gradient(90deg, #6366f1, #f97316);
+        border-radius: 16px 16px 0 0;
+    }
+    .metric-card:hover {
+        border-color: #6366f1; transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(99, 102, 241, 0.18);
+    }
+    .metric-label {
+        font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+        text-transform: uppercase; color: #8b949e; margin-bottom: 0.3rem;
+        word-wrap: break-word;
+    }
+    .metric-value {
+        font-size: 1.45rem; font-weight: 800; color: #e6edf3;
+        line-height: 1.2; word-wrap: break-word;
+    }
+    .metric-sub {
+        font-size: 0.68rem; color: #818cf8; margin-top: 0.25rem;
+        font-weight: 500; word-wrap: break-word;
+    }
+    .metric-sub-green { font-size: 0.7rem; color: #22c55e; margin-top: 0.25rem; font-weight: 500; }
+    .metric-sub-red { font-size: 0.7rem; color: #ef4444; margin-top: 0.25rem; font-weight: 500; }
+
+    /* ---- Glass Card ---- */
+    .glass-card {
+        background: rgba(22, 27, 45, 0.65);
+        backdrop-filter: blur(18px);
+        border: 1px solid rgba(99, 102, 241, 0.18);
+        border-radius: 20px; padding: 1.8rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        position: relative; z-index: 1;
+    }
+    .glass-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px rgba(99, 102, 241, 0.15);
+    }
+
+    /* ---- Tabs ---- */
     .stTabs [data-baseweb="tab-list"] { gap: 0.5rem; }
-    .stTabs [data-baseweb="tab"] { background: #21262d; border-radius: 8px; color: #8b949e; border: 1px solid #30363d; }
-    .stTabs [aria-selected="true"] { background: #ff6b35 !important; color: white !important; border-color: #ff6b35 !important; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #0d1117; }
-    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
-    #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
-    section[data-testid="stFileUploader"] { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 1rem; }
-</style>
-"""
+    .stTabs [data-baseweb="tab"] {
+        background: rgba(22, 27, 45, 0.8); border-radius: 10px;
+        color: #8b949e; border: 1px solid rgba(99, 102, 241, 0.15);
+        font-weight: 600; font-size: 0.85rem; padding: 0.5rem 1rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+        color: white !important; border-color: #6366f1 !important;
+    }
 
-LIGHT_CSS = """
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    .stApp { background-color: #f6f8fa !important; color: #1f2328 !important; font-family: 'Inter', sans-serif !important; }
-    section[data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #d0d7de !important; }
-    .section-header { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #656d76; margin-top: 2rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #d0d7de; }
-    .metric-card { background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; padding: 1.2rem 1.5rem; transition: all 0.3s ease; position: relative; overflow: hidden; }
-    .metric-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ff6b35, #ff8c42); border-radius: 12px 12px 0 0; }
-    .metric-card:hover { border-color: #ff6b35; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(255, 107, 53, 0.12); }
-    .metric-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #656d76; margin-bottom: 0.3rem; }
-    .metric-value { font-size: 1.8rem; font-weight: 800; color: #1f2328; line-height: 1.1; }
-    .metric-sub { font-size: 0.75rem; color: #1a7f37; margin-top: 0.3rem; font-weight: 500; }
-    .metric-sub-red { font-size: 0.75rem; color: #cf222e; margin-top: 0.3rem; font-weight: 500; }
+    /* ---- File Uploader ---- */
+    section[data-testid="stFileUploader"] {
+        background: rgba(22, 27, 45, 0.6);
+        border: 2px dashed rgba(99, 102, 241, 0.3);
+        border-radius: 16px; padding: 1rem;
+    }
+    section[data-testid="stFileUploader"]:hover { border-color: #6366f1; }
+
+    /* ---- Top Prediction Card ---- */
+    .top-prediction-card {
+        background: linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(249,115,22,0.08) 100%);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(99,102,241,0.25);
+        border-radius: 20px; padding: 2rem; text-align: center;
+        box-shadow: 0 12px 40px rgba(99,102,241,0.12);
+    }
+    .top-pred-label {
+        font-size: 0.7rem; font-weight: 700; letter-spacing: 0.15em;
+        text-transform: uppercase; color: #f97316; margin-bottom: 0.4rem;
+    }
+    .top-pred-name {
+        font-size: 2.2rem; font-weight: 900;
+        background: linear-gradient(135deg, #818cf8, #f97316);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        background-clip: text; line-height: 1.2; margin-bottom: 0.3rem;
+    }
+    .top-pred-conf { font-size: 1.1rem; font-weight: 600; color: #a5b4fc; }
+
+    /* ---- Instrument Cards ---- */
+    .instr-present {
+        background: rgba(34,197,94,0.05); border: 1px solid rgba(34,197,94,0.2);
+        border-left: 3px solid #22c55e; border-radius: 12px;
+        padding: 0.8rem 1rem; margin-bottom: 0.5rem;
+    }
+    .instr-absent {
+        background: rgba(239,68,68,0.04); border: 1px solid rgba(239,68,68,0.15);
+        border-left: 3px solid #ef4444; border-radius: 12px;
+        padding: 0.8rem 1rem; margin-bottom: 0.5rem; opacity: 0.7;
+    }
+
+    /* ---- Progress bar ---- */
+    .prog-bg {
+        width: 100%; height: 5px; background: rgba(99,102,241,0.1);
+        border-radius: 3px; overflow: hidden; margin-top: 0.3rem;
+    }
+    .prog-fill-green {
+        height: 100%; border-radius: 3px;
+        background: linear-gradient(90deg, #22c55e, #86efac);
+    }
+    .prog-fill-red {
+        height: 100%; border-radius: 3px;
+        background: linear-gradient(90deg, #ef4444, #f87171);
+    }
+
+    /* ---- Hide defaults ---- */
     #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
+
+    /* ---- Scrollbar ---- */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0a0e1a; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+    /* ---- Footer ---- */
+    .app-footer {
+        text-align: center; color: #475569; font-size: 0.72rem;
+        padding: 2rem 0 1rem; border-top: 1px solid rgba(99,102,241,0.1);
+        margin-top: 3rem;
+    }
 </style>
 """
 
 # ============================================
-# COLOR PALETTE
+# CONSTANTS
 # ============================================
 INSTRUMENT_COLORS = [
-    "#ff6b35", "#3fb950", "#58a6ff", "#d2a8ff",
-    "#f0883e", "#79c0ff", "#7ee787", "#ffa657",
-    "#ff7b72", "#a5d6ff", "#f778ba",
+    "#818cf8", "#22c55e", "#3b82f6", "#d8b4fe",
+    "#f97316", "#67e8f9", "#86efac", "#fb923c",
+    "#f87171", "#7dd3fc", "#f472b6",
 ]
 
 INSTRUMENT_NAMES = {
@@ -104,113 +236,59 @@ INSTRUMENT_NAMES = {
     "tru": "Trumpet", "vio": "Violin", "voi": "Voice",
 }
 
+INSTRUMENT_EMOJIS = {
+    "Cello": "🎻", "Clarinet": "🎶", "Flute": "🪈",
+    "Acoustic Guitar": "🎸", "Electric Guitar": "🎸",
+    "Organ": "🎹", "Piano": "🎹", "Saxophone": "🎷",
+    "Trumpet": "🎺", "Violin": "🎻", "Voice": "🎤",
+}
 
 # ============================================
-# THEME HELPER - applies Plotly theme cleanly
-# ============================================
-def apply_theme(fig, is_dark, height=400, title="", x_title="", y_title="", show_legend=True, x_range=None):
-    """Apply theme to a Plotly figure without keyword conflicts."""
-    if is_dark:
-        paper_bg, plot_bg = "#161b22", "#0d1117"
-        font_color, grid_color = "#e6edf3", "#21262d"
-        hover_bg, hover_border = "#161b22", "#30363d"
-    else:
-        paper_bg, plot_bg = "#ffffff", "#f6f8fa"
-        font_color, grid_color = "#1f2328", "#e6e9ec"
-        hover_bg, hover_border = "#ffffff", "#d0d7de"
-
-    layout_kwargs = dict(
-        paper_bgcolor=paper_bg,
-        plot_bgcolor=plot_bg,
-        font=dict(family="Inter", color=font_color, size=12),
-        margin=dict(l=50, r=20, t=60, b=50),
-        hoverlabel=dict(bgcolor=hover_bg, font_color=font_color, bordercolor=hover_border),
-        height=height,
-        showlegend=show_legend,
-    )
-    if title:
-        layout_kwargs["title"] = dict(text=f"<b>{title}</b>", font=dict(size=14, color=font_color))
-
-    fig.update_layout(**layout_kwargs)
-
-    xaxis_kwargs = dict(gridcolor=grid_color, zerolinecolor=grid_color)
-    yaxis_kwargs = dict(gridcolor=grid_color, zerolinecolor=grid_color)
-    if x_title:
-        xaxis_kwargs["title"] = x_title
-    if y_title:
-        yaxis_kwargs["title"] = y_title
-    if x_range:
-        xaxis_kwargs["range"] = x_range
-
-    fig.update_xaxes(**xaxis_kwargs)
-    fig.update_yaxes(**yaxis_kwargs)
-    return fig
-
-
-# ============================================
-# LOAD MODEL BUNDLE
+# MODEL DEFINITION
 # ============================================
 class CustomCNN(nn.Module):
     def __init__(self, num_classes=11):
         super().__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1, 1))
+            nn.Conv2d(1, 32, kernel_size=3, padding=1), nn.BatchNorm2d(32), nn.ReLU(), nn.MaxPool2d(2, 2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1), nn.BatchNorm2d(64), nn.ReLU(), nn.MaxPool2d(2, 2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.BatchNorm2d(128), nn.ReLU(), nn.MaxPool2d(2, 2),
+            nn.Conv2d(128, 256, kernel_size=3, padding=1), nn.BatchNorm2d(256), nn.ReLU(), nn.AdaptiveAvgPool2d((1, 1))
         )
         self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Dropout(0.5),
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(256, num_classes)
+            nn.Flatten(), nn.Dropout(0.5), nn.Linear(256, 256), nn.ReLU(), nn.Dropout(0.5), nn.Linear(256, num_classes)
         )
-
     def forward(self, x):
         return self.classifier(self.features(x))
 
+
+# ============================================
+# MODEL LOADING
+# ============================================
 @st.cache_resource
 def load_model_bundle():
     pkl_path = os.path.join(os.path.dirname(__file__), "models", "instrument_classifier_full.pkl")
     with open(pkl_path, "rb") as f:
         bundle = pickle.load(f)
-
     num_classes = bundle["architecture_config"]["num_classes"]
     model = CustomCNN(num_classes=num_classes)
-    
     model.load_state_dict(bundle["model_state_dict"])
     model.eval()
     return model, bundle
 
 
+# ============================================
+# AUDIO PREPROCESSING
+# ============================================
 def preprocess_audio(audio_bytes, config):
-    sr = config["sample_rate"]
-    duration = config["duration_seconds"]
-    n_mels = config["n_mels"]
-    hop = config["hop_length"]
+    sr = config.get("sample_rate", 22050)
+    duration = config.get("duration_seconds", 3)
+    n_mels = config.get("n_mels", 128)
+    hop = config.get("hop_length", 512)
 
     audio, _ = librosa.load(io.BytesIO(audio_bytes), sr=sr, mono=True)
-
     segment_len = sr * duration
-    segments = [
-        audio[i : i + segment_len]
-        for i in range(0, len(audio), segment_len)
-        if len(audio[i : i + segment_len]) >= sr
-    ]
+    segments = [audio[i:i+segment_len] for i in range(0, len(audio), segment_len) if len(audio[i:i+segment_len]) >= sr]
     if not segments:
         segments = [audio]
 
@@ -221,612 +299,736 @@ def preprocess_audio(audio_bytes, config):
             seg = np.pad(seg, (0, target_len - len(seg)))
         else:
             seg = seg[:target_len]
-
         mel_spec = librosa.feature.melspectrogram(y=seg, sr=sr, n_mels=n_mels, hop_length=hop)
         mel_db = librosa.power_to_db(mel_spec, ref=np.max)
         mel_db = (mel_db - np.mean(mel_db)) / (np.std(mel_db) + 1e-8)
-
-        target_w = config["target_shape"][1]
+        target_w = config.get("target_shape", (128, 128))[1]
         if mel_db.shape[1] < target_w:
             mel_db = np.pad(mel_db, ((0, 0), (0, target_w - mel_db.shape[1])), mode="constant")
         else:
             mel_db = mel_db[:, :target_w]
-
         channels = config.get("channels", 1)
         if channels == 3:
-            spec = np.stack([mel_db, mel_db, mel_db], axis=0)
+            spec = np.stack([mel_db]*3, axis=0)
         else:
             spec = np.expand_dims(mel_db, axis=0)
-            
-        tensor = torch.tensor(spec, dtype=torch.float32).unsqueeze(0)
-        all_tensors.append(tensor)
-
+        all_tensors.append(torch.tensor(spec, dtype=torch.float32).unsqueeze(0))
     return all_tensors, audio, sr
 
 
-@st.cache_data
-def generate_mock_telemetry(_class_names, _instrument_names):
-    np.random.seed(42)
-    dates = pd.date_range("2024-01-01", periods=365, freq="D")
-    records = []
-    for date in dates:
-        n_preds = np.random.randint(5, 25)
-        for _ in range(n_preds):
-            cls = np.random.choice(_class_names)
-            conf = np.clip(np.random.beta(5, 2) * 100, 10, 99.9)
-            records.append({
-                "date": date,
-                "instrument_code": cls,
-                "instrument": _instrument_names.get(cls, cls),
-                "confidence": round(conf, 2),
-                "correct": np.random.random() < 0.84,
-            })
-    return pd.DataFrame(records)
+def run_prediction(model, audio_bytes, config, class_names, instr_names):
+    """Run prediction on a single audio file. Returns dict with results."""
+    tensors, audio_signal, audio_sr = preprocess_audio(audio_bytes, config)
+    all_probs = []
+    with torch.no_grad():
+        for t in tensors:
+            output = model(t)
+            probs = torch.softmax(output, dim=1).cpu().numpy()[0]
+            all_probs.append(probs)
+
+    timeline_data = np.array(all_probs)
+    avg_probs = np.mean(timeline_data, axis=0)
+    predictions = []
+    for i, cls in enumerate(class_names):
+        predictions.append({
+            "Instrument": instr_names.get(cls, cls),
+            "Code": cls,
+            "Confidence": round(float(avg_probs[i]) * 100, 2),
+        })
+    pred_df = pd.DataFrame(predictions).sort_values("Confidence", ascending=False)
+    return {
+        "predictions": pred_df,
+        "timeline": timeline_data,
+        "audio_signal": audio_signal,
+        "audio_sr": audio_sr,
+        "avg_probs": avg_probs,
+        "top_instrument": pred_df.iloc[0]["Instrument"],
+        "top_confidence": pred_df.iloc[0]["Confidence"],
+    }
+
+
+# ============================================
+# PLOTLY THEME HELPER
+# ============================================
+def apply_theme(fig, height=400, title="", x_title="", y_title="", show_legend=True, x_range=None):
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#0d1220",
+        font=dict(family="Inter", color="#e6edf3", size=12),
+        margin=dict(l=55, r=25, t=55, b=50),
+        hoverlabel=dict(bgcolor="#161b2e", font_color="#e6edf3", bordercolor="#30363d"),
+        height=height, showlegend=show_legend,
+    )
+    if title:
+        fig.update_layout(title=dict(text=f"<b>{title}</b>", font=dict(size=14, color="#e6edf3")))
+    xkw = dict(gridcolor="#1e2438", zerolinecolor="#1e2438", automargin=True)
+    ykw = dict(gridcolor="#1e2438", zerolinecolor="#1e2438", automargin=True)
+    if x_title: xkw["title"] = dict(text=x_title, font=dict(size=11))
+    if y_title: ykw["title"] = dict(text=y_title, font=dict(size=11))
+    if x_range: xkw["range"] = x_range
+    fig.update_xaxes(**xkw)
+    fig.update_yaxes(**ykw)
+    return fig
+
+
+def metric_card(label, value, sub, sub_class="metric-sub"):
+    return f"""<div class="metric-card">
+        <div class="metric-label">{label}</div>
+        <div class="metric-value">{value}</div>
+        <div class="{sub_class}">{sub}</div>
+    </div>"""
+
+
+# ============================================
+# TAB 1: MODEL OVERVIEW
+# ============================================
+def render_model_overview(bundle, class_names, instr_names):
+    eval_results = bundle.get("evaluation_results", {})
+    report = eval_results.get("classification_report", {})
+    arch = bundle.get("architecture_config", {})
+    meta = bundle.get("metadata", {})
+
+    # --- KPI Row ---
+    accuracy = eval_results.get("accuracy", 0) * 100
+    precision_val = eval_results.get("precision", 0) * 100
+    recall_val = eval_results.get("recall", 0) * 100
+    f1_val = eval_results.get("f1_score", 0) * 100
+
+    st.markdown('<div class="section-header">📊 Model Performance Metrics</div>', unsafe_allow_html=True)
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(metric_card("Accuracy", f"{accuracy:.1f}%", "Weighted avg"), unsafe_allow_html=True)
+    k2.markdown(metric_card("Precision", f"{precision_val:.1f}%", "Weighted avg"), unsafe_allow_html=True)
+    k3.markdown(metric_card("Recall", f"{recall_val:.1f}%", "Weighted avg"), unsafe_allow_html=True)
+    k4.markdown(metric_card("F1 Score", f"{f1_val:.1f}%", "Harmonic mean"), unsafe_allow_html=True)
+
+    st.markdown("")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.markdown(metric_card("Backbone", "CustomCNN", "4-layer conv"), unsafe_allow_html=True)
+    m2.markdown(metric_card("Classes", str(arch.get("num_classes", 11)), "Instruments"), unsafe_allow_html=True)
+    m3.markdown(metric_card("Input", "1×128×128", "Mel spectro"), unsafe_allow_html=True)
+    m4.markdown(metric_card("Version", meta.get("version", "2.0"), "PyTorch"), unsafe_allow_html=True)
+
+    # --- Charts Row ---
+    st.markdown('<div class="section-header">📈 Per-Class Performance</div>', unsafe_allow_html=True)
+    ch1, ch2 = st.columns(2)
+
+    with ch1:
+        if report:
+            f1_data = [{"Instrument": instr_names.get(c, c), "F1 Score": report.get(c, {}).get("f1-score", 0) * 100}
+                       for c in class_names if c in report]
+            f1_df = pd.DataFrame(f1_data).sort_values("F1 Score", ascending=True)
+            fig = go.Figure(go.Bar(
+                y=f1_df["Instrument"], x=f1_df["F1 Score"], orientation="h",
+                marker=dict(color=f1_df["F1 Score"],
+                            colorscale=[[0, "#ef4444"], [0.5, "#f97316"], [1, "#22c55e"]],
+                            line=dict(width=0)),
+                text=f1_df["F1 Score"].round(1).astype(str) + "%",
+                textposition="outside", textfont=dict(size=10, color="#e6edf3"),
+                hovertemplate="<b>%{y}</b><br>F1: %{x:.1f}%<extra></extra>",
+            ))
+            fig = apply_theme(fig, height=420, title="Per-Class F1 Score", x_title="F1 Score (%)", x_range=[0, 105])
+            fig.update_yaxes(title="")
+            st.plotly_chart(fig, use_container_width=True)
+
+    with ch2:
+        if report:
+            prec_rec = []
+            for c in class_names:
+                if c in report:
+                    prec_rec.append({
+                        "Instrument": instr_names.get(c, c),
+                        "Precision": report[c].get("precision", 0) * 100,
+                        "Recall": report[c].get("recall", 0) * 100,
+                    })
+            pr_df = pd.DataFrame(prec_rec)
+            fig = go.Figure()
+            fig.add_trace(go.Bar(name="Precision", x=pr_df["Instrument"], y=pr_df["Precision"],
+                                 marker_color="#818cf8", text=pr_df["Precision"].round(1).astype(str)+"%",
+                                 textposition="outside", textfont=dict(size=9, color="#e6edf3")))
+            fig.add_trace(go.Bar(name="Recall", x=pr_df["Instrument"], y=pr_df["Recall"],
+                                 marker_color="#f97316", text=pr_df["Recall"].round(1).astype(str)+"%",
+                                 textposition="outside", textfont=dict(size=9, color="#e6edf3")))
+            fig.update_layout(barmode="group")
+            fig = apply_theme(fig, height=420, title="Precision vs Recall", y_title="Score (%)")
+            fig.update_xaxes(tickangle=-45, tickfont=dict(size=9))
+            fig.update_yaxes(range=[0, 105])
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- Confusion Matrix from static image ---
+    st.markdown('<div class="section-header">🔥 Training Artifacts</div>', unsafe_allow_html=True)
+    img1, img2 = st.columns(2)
+    cm_path = os.path.join(os.path.dirname(__file__), "models", "confusion_matrix.png")
+    th_path = os.path.join(os.path.dirname(__file__), "models", "training_history.png")
+    with img1:
+        if os.path.exists(cm_path):
+            st.image(cm_path, caption="Confusion Matrix", use_column_width=True)
+        else:
+            st.info("Confusion matrix image not found.")
+    with img2:
+        if os.path.exists(th_path):
+            st.image(th_path, caption="Training History", use_column_width=True)
+        else:
+            st.info("Training history image not found.")
+
+
+# ============================================
+# TAB 2: LIVE PREDICTION
+# ============================================
+def render_live_prediction(model, bundle, model_loaded):
+    class_names = bundle["class_names"]
+    instr_names = bundle.get("instrument_names", INSTRUMENT_NAMES)
+    config = bundle.get("preprocessing_config", {})
+
+    st.markdown('<div class="section-header">🎤 Upload Audio for Prediction</div>', unsafe_allow_html=True)
+
+    uploaded = st.file_uploader("Upload an audio file (WAV, MP3, FLAC)", type=["wav", "mp3", "flac"],
+                                key="live_upload", help="Max 25MB. Supported: WAV, MP3, FLAC.")
+
+    if uploaded is not None:
+        audio_bytes = uploaded.read()
+        uploaded.seek(0)
+        st.audio(uploaded, format="audio/wav")
+        st.markdown("")
+
+        if not model_loaded:
+            st.error("⚠️ Model not loaded. Cannot make predictions.")
+            return
+
+        with st.spinner("🔍 Analyzing audio..."):
+            try:
+                result = run_prediction(model, audio_bytes, config, class_names, instr_names)
+            except Exception as e:
+                st.error(f"Prediction error: {e}")
+                return
+
+        pred_df = result["predictions"]
+        top = pred_df.iloc[0]
+        threshold = st.session_state.get("threshold", 30)
+
+        # Top prediction card
+        emoji = INSTRUMENT_EMOJIS.get(top["Instrument"], "🎵")
+        st.markdown(f"""
+            <div class="top-prediction-card">
+                <div class="top-pred-label">🏆 Detected Instrument</div>
+                <div class="top-pred-name">{emoji} {top["Instrument"]}</div>
+                <div class="top-pred-conf">{top["Confidence"]}% Confidence</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("")
+
+        # Audio info + visualizations
+        audio_signal = result["audio_signal"]
+        audio_sr = result["audio_sr"]
+        duration = round(len(audio_signal) / audio_sr, 2)
+
+        info1, info2, info3 = st.columns(3)
+        info1.markdown(metric_card("📁 File", uploaded.name[:20], "Uploaded"), unsafe_allow_html=True)
+        info2.markdown(metric_card("⏱ Duration", f"{duration}s", f"{audio_sr} Hz"), unsafe_allow_html=True)
+        info3.markdown(metric_card("🔢 Segments", str(result["timeline"].shape[0]),
+                                   f'{config.get("duration_seconds",3)}s each'), unsafe_allow_html=True)
+
+        st.markdown('<div class="section-header">📊 Audio Analysis</div>', unsafe_allow_html=True)
+        v1, v2 = st.columns(2)
+
+        with v1:
+            fig_w, ax_w = plt.subplots(figsize=(6, 2.5), facecolor="#0a0e1a")
+            ax_w.set_facecolor("#0d1220")
+            librosa.display.waveshow(y=audio_signal, sr=audio_sr, ax=ax_w, color="#818cf8")
+            ax_w.set_title("Waveform", color="#e6edf3", fontsize=11, fontweight="bold")
+            ax_w.set_xlabel("Time (s)", color="#8b949e", fontsize=8)
+            ax_w.set_ylabel("Amplitude", color="#8b949e", fontsize=8)
+            ax_w.tick_params(colors="#8b949e", labelsize=7)
+            for sp in ax_w.spines.values(): sp.set_color("#1e2438")
+            fig_w.tight_layout()
+            buf = io.BytesIO()
+            fig_w.savefig(buf, format="png", dpi=120, bbox_inches="tight")
+            plt.close(fig_w)
+            buf.seek(0)
+            st.image(buf, use_column_width=True)
+
+        with v2:
+            mel = librosa.feature.melspectrogram(y=audio_signal, sr=audio_sr, n_mels=128, hop_length=512)
+            mel_db = librosa.power_to_db(mel, ref=np.max)
+            fig_s, ax_s = plt.subplots(figsize=(6, 2.5), facecolor="#0a0e1a")
+            ax_s.set_facecolor("#0d1220")
+            img = librosa.display.specshow(mel_db, x_axis='time', y_axis='mel', sr=audio_sr, hop_length=512, cmap='magma', ax=ax_s)
+            ax_s.set_title("Mel Spectrogram", color="#e6edf3", fontsize=11, fontweight="bold")
+            ax_s.set_xlabel("Time (s)", color="#8b949e", fontsize=8)
+            ax_s.set_ylabel("Hz", color="#8b949e", fontsize=8)
+            ax_s.tick_params(colors="#8b949e", labelsize=7)
+            for sp in ax_s.spines.values(): sp.set_color("#1e2438")
+            cbar = fig_s.colorbar(img, ax=ax_s, format='%+2.0f dB')
+            cbar.ax.tick_params(colors="#8b949e", labelsize=7)
+            cbar.outline.set_edgecolor("#1e2438")
+            fig_s.tight_layout()
+            buf2 = io.BytesIO()
+            fig_s.savefig(buf2, format="png", dpi=120, bbox_inches="tight")
+            plt.close(fig_s)
+            buf2.seek(0)
+            st.image(buf2, use_column_width=True)
+
+        # Prediction bar chart + instrument cards
+        st.markdown('<div class="section-header">🎯 Prediction Results</div>', unsafe_allow_html=True)
+        pc1, pc2 = st.columns([1.2, 0.8])
+
+        with pc1:
+            fig = go.Figure(go.Bar(
+                x=pred_df["Confidence"], y=pred_df["Instrument"], orientation="h",
+                marker=dict(color=["#22c55e" if c >= threshold else "#ef4444" for c in pred_df["Confidence"]]),
+                text=pred_df["Confidence"].astype(str) + "%", textposition="outside",
+                textfont=dict(size=10, color="#e6edf3"),
+                hovertemplate="<b>%{y}</b><br>Confidence: %{x:.1f}%<extra></extra>",
+            ))
+            fig.add_vline(x=threshold, line=dict(color="#fbbf24", width=2, dash="dash"),
+                          annotation_text=f"Threshold ({threshold}%)", annotation_font=dict(color="#fbbf24", size=10))
+            fig = apply_theme(fig, height=400, title="All Predictions", x_title="Confidence (%)", x_range=[0, 105], show_legend=False)
+            fig.update_yaxes(title="")
+            st.plotly_chart(fig, use_container_width=True)
+
+        with pc2:
+            present = pred_df[pred_df["Confidence"] >= threshold]
+            absent = pred_df[pred_df["Confidence"] < threshold]
+            st.markdown(f"**✅ Present ({len(present)})**")
+            for _, p in present.iterrows():
+                emoji_i = INSTRUMENT_EMOJIS.get(p["Instrument"], "🎵")
+                st.markdown(f"""<div class="instr-present">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-weight:700;color:#e6edf3;font-size:0.9rem;">{emoji_i} {p["Instrument"]}</span>
+                        <span style="background:rgba(34,197,94,0.15);color:#22c55e;padding:2px 8px;border-radius:20px;font-size:0.6rem;font-weight:700;">PRESENT</span>
+                    </div>
+                    <div style="color:#8b949e;font-size:0.75rem;margin-top:0.2rem;">Confidence: <strong style="color:#e6edf3;">{p["Confidence"]}%</strong></div>
+                    <div class="prog-bg"><div class="prog-fill-green" style="width:{p['Confidence']}%;"></div></div>
+                </div>""", unsafe_allow_html=True)
+
+            if len(absent) > 0:
+                st.markdown(f"**❌ Not Present ({len(absent)})**")
+                for _, p in absent.iterrows():
+                    st.markdown(f"""<div class="instr-absent">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-weight:700;color:#e6edf3;font-size:0.9rem;">{p["Instrument"]}</span>
+                            <span style="background:rgba(239,68,68,0.15);color:#ef4444;padding:2px 8px;border-radius:20px;font-size:0.6rem;font-weight:700;">ABSENT</span>
+                        </div>
+                        <div style="color:#8b949e;font-size:0.75rem;margin-top:0.2rem;">Confidence: <strong>{p["Confidence"]}%</strong></div>
+                        <div class="prog-bg"><div class="prog-fill-red" style="width:{p['Confidence']}%;"></div></div>
+                    </div>""", unsafe_allow_html=True)
+
+        # Add to session prediction history
+        _add_to_history(uploaded.name, pred_df, result["top_instrument"], result["top_confidence"])
+
+        # Timeline
+        if result["timeline"].shape[0] > 1:
+            st.markdown('<div class="section-header">⏱ Instrument Activity Timeline</div>', unsafe_allow_html=True)
+            seg_dur = config.get("duration_seconds", 3)
+            x_time = np.arange(result["timeline"].shape[0]) * seg_dur
+            fig_tl = go.Figure()
+            readable = [instr_names.get(c, c) for c in class_names]
+            for i, (name, color) in enumerate(zip(readable, INSTRUMENT_COLORS[:len(readable)])):
+                fig_tl.add_trace(go.Scatter(
+                    x=x_time, y=result["timeline"][:, i] * 100, mode="lines+markers",
+                    name=name, line=dict(width=2.5, color=color), marker=dict(size=4),
+                    hovertemplate=f"<b>{name}</b><br>Time: %{{x}}s<br>Confidence: %{{y:.1f}}%<extra></extra>",
+                ))
+            fig_tl.add_hline(y=threshold, line=dict(color="#fbbf24", width=2, dash="dash"),
+                             annotation_text=f"Threshold ({threshold}%)", annotation_font=dict(color="#fbbf24", size=10))
+            fig_tl = apply_theme(fig_tl, height=420, title="Instrument Activity Over Time",
+                                 x_title="Time (s)", y_title="Confidence (%)")
+            fig_tl.update_layout(legend=dict(font=dict(size=9, color="#e6edf3"), bgcolor="rgba(0,0,0,0)"))
+            st.plotly_chart(fig_tl, use_container_width=True)
+
+
+# ============================================
+# TAB 3: BATCH PREDICTION
+# ============================================
+def _render_batch_file_analysis(fname, audio_signal, audio_sr, pred_df, threshold, is_dark=True):
+    """Render waveform, mel spectrogram, and prediction chart for one batch file."""
+    duration = round(len(audio_signal) / audio_sr, 2)
+    top = pred_df.iloc[0]
+    emoji = INSTRUMENT_EMOJIS.get(top["Instrument"], "🎵")
+
+    # Info row
+    i1, i2, i3 = st.columns(3)
+    i1.markdown(metric_card("Detected", f'{emoji} {top["Instrument"][:14]}', f'{top["Confidence"]}%'), unsafe_allow_html=True)
+    i2.markdown(metric_card("Duration", f"{duration}s", f"{audio_sr} Hz"), unsafe_allow_html=True)
+    present_count = len(pred_df[pred_df["Confidence"] >= threshold])
+    i3.markdown(metric_card("Present", str(present_count), f"≥{threshold}% threshold"), unsafe_allow_html=True)
+
+    st.markdown("")
+
+    # Waveform + Spectrogram
+    w_col, s_col = st.columns(2)
+    with w_col:
+        fig_w, ax_w = plt.subplots(figsize=(5, 2), facecolor="#0a0e1a")
+        ax_w.set_facecolor("#0d1220")
+        librosa.display.waveshow(y=audio_signal, sr=audio_sr, ax=ax_w, color="#818cf8")
+        ax_w.set_title("Waveform", color="#e6edf3", fontsize=9, fontweight="bold")
+        ax_w.set_xlabel("Time (s)", color="#8b949e", fontsize=7)
+        ax_w.set_ylabel("Amp", color="#8b949e", fontsize=7)
+        ax_w.tick_params(colors="#8b949e", labelsize=6)
+        for sp in ax_w.spines.values(): sp.set_color("#1e2438")
+        fig_w.tight_layout()
+        buf = io.BytesIO()
+        fig_w.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+        plt.close(fig_w)
+        buf.seek(0)
+        st.image(buf, use_column_width=True)
+
+    with s_col:
+        mel = librosa.feature.melspectrogram(y=audio_signal, sr=audio_sr, n_mels=128, hop_length=512)
+        mel_db = librosa.power_to_db(mel, ref=np.max)
+        fig_s, ax_s = plt.subplots(figsize=(5, 2), facecolor="#0a0e1a")
+        ax_s.set_facecolor("#0d1220")
+        img = librosa.display.specshow(mel_db, x_axis='time', y_axis='mel', sr=audio_sr, hop_length=512, cmap='magma', ax=ax_s)
+        ax_s.set_title("Mel Spectrogram", color="#e6edf3", fontsize=9, fontweight="bold")
+        ax_s.set_xlabel("Time (s)", color="#8b949e", fontsize=7)
+        ax_s.set_ylabel("Hz", color="#8b949e", fontsize=7)
+        ax_s.tick_params(colors="#8b949e", labelsize=6)
+        for sp in ax_s.spines.values(): sp.set_color("#1e2438")
+        cbar = fig_s.colorbar(img, ax=ax_s, format='%+2.0f dB')
+        cbar.ax.tick_params(colors="#8b949e", labelsize=6)
+        cbar.outline.set_edgecolor("#1e2438")
+        fig_s.tight_layout()
+        buf2 = io.BytesIO()
+        fig_s.savefig(buf2, format="png", dpi=100, bbox_inches="tight")
+        plt.close(fig_s)
+        buf2.seek(0)
+        st.image(buf2, use_column_width=True)
+
+    # Prediction bar chart
+    fig = go.Figure(go.Bar(
+        x=pred_df["Confidence"], y=pred_df["Instrument"], orientation="h",
+        marker=dict(color=["#22c55e" if c >= threshold else "#ef4444" for c in pred_df["Confidence"]]),
+        text=pred_df["Confidence"].astype(str) + "%", textposition="outside",
+        textfont=dict(size=9, color="#e6edf3"),
+        hovertemplate="<b>%{y}</b><br>%{x:.1f}%<extra></extra>",
+    ))
+    fig = apply_theme(fig, height=300, title="Predictions", x_title="Confidence (%)", x_range=[0, 105], show_legend=False)
+    fig.update_yaxes(title="", tickfont=dict(size=9))
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_batch_prediction(model, bundle, model_loaded):
+    class_names = bundle["class_names"]
+    instr_names = bundle.get("instrument_names", INSTRUMENT_NAMES)
+    config = bundle.get("preprocessing_config", {})
+
+    st.markdown('<div class="section-header">📁 Batch Upload & Predict</div>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#94a3b8;font-size:0.85rem;">Upload multiple audio files to get predictions for all of them. Each file gets waveform, spectrogram, and predictions. Download results as CSV or JSON.</p>', unsafe_allow_html=True)
+
+    files = st.file_uploader("Upload audio files", type=["wav", "mp3", "flac"],
+                             accept_multiple_files=True, key="batch_upload")
+
+    if not files:
+        st.info("Upload one or more audio files to start batch prediction.")
+        return
+
+    if not model_loaded:
+        st.error("⚠️ Model not loaded. Cannot make predictions.")
+        return
+
+    # Create a hashable key from filenames to detect new uploads
+    file_key = "|".join(sorted([f.name for f in files]))
+    prev_key = st.session_state.get("batch_file_key", "")
+
+    if file_key != prev_key:
+        st.session_state["batch_file_key"] = file_key
+        st.session_state["batch_results"] = None
+        st.session_state["batch_audio_data"] = None
+
+    run_clicked = st.button("🚀 Run Batch Prediction", type="primary", use_container_width=True, key="batch_btn")
+
+    if run_clicked or st.session_state.get("batch_results") is None:
+        with st.spinner("🔍 Processing all files..."):
+            all_results = []
+            audio_data = {}
+            batch_status = st.empty()
+            for idx, f in enumerate(files):
+                batch_status.markdown(f'<p style="color:#818cf8;font-size:0.85rem;">Processing file {idx+1}/{len(files)}: <strong>{f.name}</strong></p>', unsafe_allow_html=True)
+                try:
+                    audio_bytes = f.read()
+                    f.seek(0)
+                    res = run_prediction(model, audio_bytes, config, class_names, instr_names)
+                    row = {"Filename": f.name, "Top Instrument": res["top_instrument"],
+                           "Top Confidence (%)": res["top_confidence"],
+                           "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                    for _, p in res["predictions"].iterrows():
+                        row[p["Instrument"]] = p["Confidence"]
+                    all_results.append(row)
+                    audio_data[f.name] = {
+                        "signal": res["audio_signal"],
+                        "sr": res["audio_sr"],
+                        "predictions": res["predictions"],
+                    }
+                    _add_to_history(f.name, res["predictions"], res["top_instrument"], res["top_confidence"])
+                except Exception as e:
+                    all_results.append({"Filename": f.name, "Top Instrument": f"ERROR: {e}",
+                                        "Top Confidence (%)": 0})
+            batch_status.empty()
+            results_df = pd.DataFrame(all_results)
+            st.session_state["batch_results"] = results_df
+            st.session_state["batch_audio_data"] = audio_data
+
+    # Display results
+    if st.session_state.get("batch_results") is not None:
+        results_df = st.session_state["batch_results"]
+        audio_data = st.session_state.get("batch_audio_data", {})
+        threshold = st.session_state.get("threshold", 30)
+
+        st.markdown('<div class="section-header">📊 Batch Results</div>', unsafe_allow_html=True)
+
+        # Summary cards
+        s1, s2, s3, s4 = st.columns(4)
+        s1.markdown(metric_card("Files", str(len(results_df)), "Processed"), unsafe_allow_html=True)
+        avg_conf = results_df["Top Confidence (%)"].mean()
+        s2.markdown(metric_card("Avg Conf", f"{avg_conf:.1f}%", "Top preds"), unsafe_allow_html=True)
+        top_instr = results_df["Top Instrument"].mode().iloc[0] if len(results_df) > 0 else "N/A"
+        s3.markdown(metric_card("Most Common", top_instr[:12], "Instrument"), unsafe_allow_html=True)
+        success_count = len(results_df[~results_df["Top Instrument"].str.startswith("ERROR")])
+        s4.markdown(metric_card("Success", f"{success_count}/{len(results_df)}", "Files"), unsafe_allow_html=True)
+
+        st.markdown("")
+
+        # Distribution charts
+        viz1, viz2 = st.columns(2)
+        with viz1:
+            dist = results_df["Top Instrument"].value_counts()
+            fig = go.Figure(go.Bar(
+                x=dist.index, y=dist.values,
+                marker=dict(color=INSTRUMENT_COLORS[:len(dist)], line=dict(width=0)),
+                text=dist.values, textposition="outside", textfont=dict(size=11, color="#e6edf3"),
+                hovertemplate="<b>%{x}</b><br>Count: %{y}<extra></extra>",
+            ))
+            fig = apply_theme(fig, height=350, title="Instrument Distribution", y_title="Count", show_legend=False)
+            fig.update_xaxes(tickangle=-45, tickfont=dict(size=9))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with viz2:
+            fig2 = go.Figure(go.Histogram(
+                x=results_df["Top Confidence (%)"], nbinsx=15,
+                marker=dict(color="#818cf8", line=dict(color="#6366f1", width=1)),
+                hovertemplate="Confidence: %{x:.1f}%<br>Count: %{y}<extra></extra>",
+            ))
+            fig2 = apply_theme(fig2, height=350, title="Confidence Spread", x_title="Confidence (%)", y_title="Count", show_legend=False)
+            st.plotly_chart(fig2, use_container_width=True)
+
+        # Per-file analysis with expanders
+        st.markdown('<div class="section-header">🔬 Per-File Audio Analysis</div>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#94a3b8;font-size:0.82rem;">Click on any file below to see its waveform, mel spectrogram, and full prediction breakdown.</p>', unsafe_allow_html=True)
+
+        for idx, row in results_df.iterrows():
+            fname = row["Filename"]
+            top_inst = row["Top Instrument"]
+            top_conf = row["Top Confidence (%)"]
+
+            if fname in audio_data:
+                emoji = INSTRUMENT_EMOJIS.get(top_inst, "🎵")
+                # Auto-expand the first file's results
+                is_first = (idx == 0)
+                with st.expander(f"{emoji} {fname}  →  **{top_inst}** ({top_conf}%)", expanded=is_first):
+                    ad = audio_data[fname]
+                    _render_batch_file_analysis(fname, ad["signal"], ad["sr"], ad["predictions"], threshold)
+            else:
+                with st.expander(f"❌ {fname} — Error"):
+                    st.error(f"Failed to process: {top_inst}")
+
+        # Results table
+        st.markdown('<div class="section-header">📋 Detailed Results</div>', unsafe_allow_html=True)
+        st.dataframe(results_df, use_container_width=True, hide_index=True, height=min(400, 40 + len(results_df) * 35))
+
+        # Download buttons
+        st.markdown('<div class="section-header">💾 Download Results</div>', unsafe_allow_html=True)
+        dl1, dl2, dl3 = st.columns(3)
+        with dl1:
+            csv_data = results_df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download CSV", data=csv_data, file_name="instrunet_predictions.csv",
+                               mime="text/csv", use_container_width=True)
+        with dl2:
+            json_data = results_df.to_json(orient="records", indent=2).encode("utf-8")
+            st.download_button("📥 Download JSON", data=json_data, file_name="instrunet_predictions.json",
+                               mime="application/json", use_container_width=True)
+        with dl3:
+            st.download_button("📥 Download TXT", data=results_df.to_string(index=False).encode("utf-8"),
+                               file_name="instrunet_predictions.txt", mime="text/plain", use_container_width=True)
+
+
+# ============================================
+# TAB 4: PREDICTION HISTORY
+# ============================================
+def _add_to_history(filename, pred_df, top_instrument, top_confidence):
+    if "prediction_history" not in st.session_state:
+        st.session_state["prediction_history"] = []
+    st.session_state["prediction_history"].append({
+        "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Filename": filename,
+        "Top Instrument": top_instrument,
+        "Top Confidence (%)": top_confidence,
+    })
+
+
+def render_prediction_history():
+    st.markdown('<div class="section-header">📈 Session Prediction History</div>', unsafe_allow_html=True)
+
+    history = st.session_state.get("prediction_history", [])
+
+    if not history:
+        st.info("No predictions made yet in this session. Use the Live Prediction or Batch Prediction tabs to start.")
+        return
+
+    hist_df = pd.DataFrame(history)
+
+    # Summary
+    s1, s2, s3, s4 = st.columns(4)
+    s1.markdown(metric_card("Total Predictions", str(len(hist_df)), "This session"), unsafe_allow_html=True)
+    s2.markdown(metric_card("Avg Confidence", f'{hist_df["Top Confidence (%)"].mean():.1f}%', "All predictions"), unsafe_allow_html=True)
+    unique_files = hist_df["Filename"].nunique()
+    s3.markdown(metric_card("Unique Files", str(unique_files), "Analyzed"), unsafe_allow_html=True)
+    most_common = hist_df["Top Instrument"].mode().iloc[0] if len(hist_df) > 0 else "N/A"
+    s4.markdown(metric_card("Most Detected", most_common, "Instrument"), unsafe_allow_html=True)
+
+    st.markdown("")
+
+    # Distribution chart
+    ch1, ch2 = st.columns(2)
+    with ch1:
+        dist = hist_df["Top Instrument"].value_counts()
+        fig = go.Figure(go.Pie(
+            labels=dist.index, values=dist.values, hole=0.55,
+            marker=dict(colors=INSTRUMENT_COLORS[:len(dist)]),
+            textinfo="percent", textfont=dict(size=11, color="#e6edf3"),
+            hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Share: %{percent}<extra></extra>",
+        ))
+        fig = apply_theme(fig, height=380, title="Prediction Distribution")
+        fig.update_layout(legend=dict(font=dict(size=10, color="#e6edf3"), bgcolor="rgba(0,0,0,0)"))
+        st.plotly_chart(fig, use_container_width=True)
+
+    with ch2:
+        conf_fig = go.Figure(go.Histogram(
+            x=hist_df["Top Confidence (%)"], nbinsx=20,
+            marker=dict(color="#818cf8", line=dict(color="#6366f1", width=1)),
+            hovertemplate="Confidence: %{x:.1f}%<br>Count: %{y}<extra></extra>",
+        ))
+        conf_fig = apply_theme(conf_fig, height=380, title="Confidence Distribution",
+                               x_title="Confidence (%)", y_title="Count", show_legend=False)
+        st.plotly_chart(conf_fig, use_container_width=True)
+
+    # Full table
+    st.markdown("")
+    st.dataframe(hist_df, use_container_width=True, hide_index=True)
+
+    # Download
+    st.markdown('<div class="section-header">💾 Export History</div>', unsafe_allow_html=True)
+    dl1, dl2 = st.columns(2)
+    with dl1:
+        csv = hist_df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download CSV", data=csv, file_name="prediction_history.csv",
+                           mime="text/csv", use_container_width=True)
+    with dl2:
+        js = hist_df.to_json(orient="records", indent=2).encode("utf-8")
+        st.download_button("📥 Download JSON", data=js, file_name="prediction_history.json",
+                           mime="application/json", use_container_width=True)
+
+    if st.button("🗑️ Clear History", type="secondary"):
+        st.session_state["prediction_history"] = []
+        st.rerun()
 
 
 # ============================================
 # MAIN APP
 # ============================================
 def main():
-    # --- Load model ---
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    st.markdown('<div class="bg-blur-1"></div><div class="bg-blur-2"></div>', unsafe_allow_html=True)
+
+    # Load model
     try:
         model, bundle = load_model_bundle()
         model_loaded = True
     except Exception as e:
         model_loaded = False
+        model = None
         bundle = {
             "class_names": list(INSTRUMENT_NAMES.keys()),
             "instrument_names": INSTRUMENT_NAMES,
-            "preprocessing_config": {},
-            "evaluation_results": {},
+            "preprocessing_config": {}, "evaluation_results": {},
+            "architecture_config": {"backbone": "CustomCNN", "num_classes": 11},
+            "metadata": {"framework": "PyTorch", "version": "2.0"},
         }
 
     class_names = bundle["class_names"]
     instr_names = bundle.get("instrument_names", INSTRUMENT_NAMES)
-    eval_results = bundle.get("evaluation_results", {})
-    preproc_config = bundle.get("preprocessing_config", {})
-    report = eval_results.get("classification_report", {})
 
-    # ================================
-    # SIDEBAR
-    # ================================
+    # Sidebar
     with st.sidebar:
-        st.markdown("## 🎵 InstruNet Dashboard")
+        st.markdown("## 🎵 InstruNet")
+        st.markdown('<p style="color:#94a3b8;font-size:0.78rem;">CNN Music Instrument Recognition</p>', unsafe_allow_html=True)
         st.markdown("---")
 
-        st.markdown("#### 🎨 Theme")
-        theme = st.radio("Select theme", ["🌙 Dark", "☀️ Light"], horizontal=True, label_visibility="collapsed")
-        is_dark = "Dark" in theme
-        if is_dark:
-            st.markdown("<p style='color:#3fb950; font-size:0.8rem;'>✓ Dark mode active</p>", unsafe_allow_html=True)
-        else:
-            st.markdown("<p style='color:#ff6b35; font-size:0.8rem;'>✓ Light mode active</p>", unsafe_allow_html=True)
+        st.markdown("#### ⚙️ Settings")
+        threshold = st.slider("Confidence Threshold (%)", 10, 95, 30, 5)
+        st.session_state["threshold"] = threshold
 
         st.markdown("---")
-        st.markdown("#### Instruments")
-        readable_names = [instr_names.get(c, c) for c in class_names]
-        selected_instruments = st.multiselect("Filter instruments", options=readable_names, default=readable_names, label_visibility="collapsed")
-
-        st.markdown("---")
-        st.markdown("#### Confidence Threshold")
-        threshold = st.slider("Min confidence (%)", min_value=10, max_value=95, value=30, step=5, label_visibility="collapsed")
-
-        st.markdown("---")
-        st.markdown("#### Date Range")
-        date_range = st.date_input("Select range", value=(pd.to_datetime("2024-01-01"), pd.to_datetime("2024-12-31")), label_visibility="collapsed")
-
-        st.markdown("---")
-        st.markdown(
-            f"<p style='color:#8b949e; font-size:0.7rem; text-align:center;'>"
-            f"Model: {'✅ Loaded' if model_loaded else '❌ Not loaded'}<br>"
-            f"Framework: PyTorch<br>Backbone: EfficientNet-B0</p>",
-            unsafe_allow_html=True,
-        )
-
-    # ================================
-    # APPLY THEME CSS
-    # ================================
-    st.markdown(DARK_CSS if is_dark else LIGHT_CSS, unsafe_allow_html=True)
-    text_color = "#e6edf3" if is_dark else "#1f2328"
-
-    # ================================
-    # LOAD & FILTER TELEMETRY DATA
-    # ================================
-    telemetry_df = generate_mock_telemetry(class_names, instr_names)
-    name_to_code = {v: k for k, v in instr_names.items()}
-    selected_codes = [name_to_code.get(n, n) for n in selected_instruments]
-    filtered_df = telemetry_df[telemetry_df["instrument_code"].isin(selected_codes)].copy()
-
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        filtered_df = filtered_df[
-            (filtered_df["date"] >= pd.to_datetime(date_range[0]))
-            & (filtered_df["date"] <= pd.to_datetime(date_range[1]))
-        ]
-
-    # ================================
-    # TOP KPI CARDS
-    # ================================
-    accuracy = eval_results.get("accuracy", 0.839) * 100
-    precision_val = eval_results.get("precision", 0.840) * 100
-    recall_val = eval_results.get("recall", 0.839) * 100
-    f1_val = eval_results.get("f1_score", 0.838) * 100
-    total_predictions = len(filtered_df)
-    avg_confidence = filtered_df["confidence"].mean() if len(filtered_df) > 0 else 0
-    high_conf = len(filtered_df[filtered_df["confidence"] >= threshold])
-
-    best_class, best_f1 = "", 0
-    for cls in class_names:
-        cf = report.get(cls, {}).get("f1-score", 0)
-        if cf > best_f1:
-            best_f1 = cf
-            best_class = instr_names.get(cls, cls)
-
-    def metric_card(label, value, sub, sub_class="metric-sub"):
-        return f"""<div class="metric-card">
-            <div class="metric-label">{label}</div>
-            <div class="metric-value">{value}</div>
-            <div class="{sub_class}">{sub}</div>
-        </div>"""
-
-    row1 = st.columns(4)
-    row1[0].markdown(metric_card("Overall Accuracy", f"{accuracy:.1f}%", "Weighted average"), unsafe_allow_html=True)
-    row1[1].markdown(metric_card("Avg Confidence", f"{avg_confidence:.1f}%", f"Across {total_predictions:,} predictions"), unsafe_allow_html=True)
-    row1[2].markdown(metric_card("Precision", f"{precision_val:.1f}%", "Weighted average"), unsafe_allow_html=True)
-    row1[3].markdown(metric_card("F1 Score", f"{f1_val:.1f}%", "Harmonic mean"), unsafe_allow_html=True)
-
-    row2 = st.columns(4)
-    row2[0].markdown(metric_card("Total Predictions", f"{total_predictions:,}", "Filtered period"), unsafe_allow_html=True)
-    row2[1].markdown(metric_card("High Confidence", f"{high_conf:,}", f"≥ {threshold}% confidence"), unsafe_allow_html=True)
-    row2[2].markdown(metric_card("Recall", f"{recall_val:.1f}%", "Weighted average"), unsafe_allow_html=True)
-    row2[3].markdown(metric_card("Best Performer", best_class, f"F1: {best_f1*100:.1f}%"), unsafe_allow_html=True)
-
-    # ================================
-    # SECTION: PREDICTION COMPOSITION
-    # ================================
-    st.markdown('<div class="section-header">Prediction Composition</div>', unsafe_allow_html=True)
-    chart_row1 = st.columns(2)
-
-    # Donut Chart
-    with chart_row1[0]:
-        if len(filtered_df) > 0:
-            dist_df = filtered_df.groupby("instrument").size().reset_index(name="count").sort_values("count", ascending=False)
-            fig = go.Figure(go.Pie(
-                labels=dist_df["instrument"], values=dist_df["count"], hole=0.55,
-                marker=dict(colors=INSTRUMENT_COLORS[:len(dist_df)]),
-                textinfo="label+percent", textfont=dict(size=11, color=text_color),
-                hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Share: %{percent}<extra></extra>",
-            ))
-            fig = apply_theme(fig, is_dark, height=420, title="Prediction Distribution")
-            fig.update_layout(legend=dict(font=dict(size=10, color=text_color), bgcolor="rgba(0,0,0,0)"))
-            st.plotly_chart(fig, use_container_width=True)
-
-    # Per-Class F1 Bar
-    with chart_row1[1]:
-        if report:
-            f1_data = [{"Instrument": instr_names.get(c, c), "F1 Score": report.get(c, {}).get("f1-score", 0) * 100} for c in class_names]
-            f1_df = pd.DataFrame(f1_data).sort_values("F1 Score", ascending=True)
-            fig = go.Figure(go.Bar(
-                y=f1_df["Instrument"], x=f1_df["F1 Score"], orientation="h",
-                marker=dict(color=f1_df["F1 Score"], colorscale=[[0, "#f85149"], [0.5, "#ff6b35"], [1, "#3fb950"]], line=dict(width=0)),
-                text=f1_df["F1 Score"].round(1).astype(str) + "%", textposition="outside", textfont=dict(size=11, color=text_color),
-                hovertemplate="<b>%{y}</b><br>F1: %{x:.1f}%<extra></extra>",
-            ))
-            fig = apply_theme(fig, is_dark, height=420, title="Per-Class F1 Score", x_title="F1 Score (%)", x_range=[0, 105])
-            fig.update_yaxes(title="")
-            st.plotly_chart(fig, use_container_width=True)
-
-    # ================================
-    # SECTION: CONFIDENCE ANALYSIS
-    # ================================
-    st.markdown('<div class="section-header">Confidence Analysis</div>', unsafe_allow_html=True)
-    chart_row2 = st.columns(2)
-
-    # Histogram
-    with chart_row2[0]:
-        if len(filtered_df) > 0:
-            fig = go.Figure(go.Histogram(
-                x=filtered_df["confidence"], nbinsx=40,
-                marker=dict(color="#ff6b35", line=dict(color="#ff8c42", width=1)),
-                opacity=0.85, hovertemplate="Confidence: %{x:.1f}%<br>Count: %{y}<extra></extra>",
-            ))
-            fig.add_vline(x=threshold, line=dict(color="#f85149", width=2, dash="dash"),
-                          annotation_text=f"Threshold ({threshold}%)", annotation_font=dict(color="#f85149", size=11))
-            fig = apply_theme(fig, is_dark, height=400, title="Confidence Score Distribution", x_title="Confidence (%)", y_title="Count", show_legend=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-    # Box Plot
-    with chart_row2[1]:
-        if len(filtered_df) > 0:
-            fig = go.Figure()
-            for i, instr in enumerate(sorted(filtered_df["instrument"].unique())):
-                subset = filtered_df[filtered_df["instrument"] == instr]
-                fig.add_trace(go.Box(y=subset["confidence"], name=instr,
-                    marker=dict(color=INSTRUMENT_COLORS[i % len(INSTRUMENT_COLORS)]), boxmean=True))
-            fig = apply_theme(fig, is_dark, height=400, title="Confidence by Instrument", y_title="Confidence (%)", show_legend=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-    # ================================
-    # SECTION: USAGE & DEMAND OVER TIME
-    # ================================
-    st.markdown('<div class="section-header">Usage & Demand Over Time</div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        primary_metric = st.selectbox("Primary Metric", ["Prediction Count", "Avg Confidence", "Accuracy Rate"])
-    with col2:
-        group_by = st.radio("Group by", ["instrument", "none"], horizontal=True)
-
-    if len(filtered_df) > 0:
-        monthly = filtered_df.copy()
-        monthly["month"] = monthly["date"].dt.to_period("M").dt.to_timestamp()
-
-        if primary_metric == "Prediction Count":
-            if group_by == "instrument":
-                agg = monthly.groupby(["month", "instrument"]).size().reset_index(name="value")
-            else:
-                agg = monthly.groupby("month").size().reset_index(name="value")
-            y_title = "Prediction Count"
-        elif primary_metric == "Avg Confidence":
-            if group_by == "instrument":
-                agg = monthly.groupby(["month", "instrument"])["confidence"].mean().reset_index(name="value")
-            else:
-                agg = monthly.groupby("month")["confidence"].mean().reset_index(name="value")
-            y_title = "Avg Confidence (%)"
-        else:
-            if group_by == "instrument":
-                agg = monthly.groupby(["month", "instrument"])["correct"].mean().reset_index(name="value")
-            else:
-                agg = monthly.groupby("month")["correct"].mean().reset_index(name="value")
-            agg["value"] = agg["value"] * 100
-            y_title = "Accuracy Rate (%)"
-
-        fig = go.Figure()
-        if group_by == "instrument" and "instrument" in agg.columns:
-            for i, instr in enumerate(sorted(agg["instrument"].unique())):
-                subset = agg[agg["instrument"] == instr]
-                fig.add_trace(go.Scatter(x=subset["month"], y=subset["value"], mode="lines+markers",
-                    name=instr, line=dict(width=2.5, color=INSTRUMENT_COLORS[i % len(INSTRUMENT_COLORS)]), marker=dict(size=5)))
-        else:
-            fig.add_trace(go.Scatter(x=agg["month"], y=agg["value"], mode="lines+markers",
-                name=primary_metric, line=dict(width=3, color="#ff6b35"), marker=dict(size=6),
-                fill="tozeroy", fillcolor="rgba(255, 107, 53, 0.1)"))
-
-        fig = apply_theme(fig, is_dark, height=420,
-            title=f"Monthly {primary_metric} by {'Instrument' if group_by=='instrument' else 'Total'}",
-            x_title="Month", y_title=y_title)
-        fig.update_layout(legend=dict(font=dict(size=10, color=text_color)))
-        st.plotly_chart(fig, use_container_width=True)
-
-    # ================================
-    # SECTION: ROLLING STATISTICS
-    # ================================
-    st.markdown('<div class="section-header">Rolling Statistics (30-Day)</div>', unsafe_allow_html=True)
-    roll_row = st.columns([1.2, 0.8])
-
-    with roll_row[0]:
-        if len(filtered_df) > 0:
-            daily = filtered_df.groupby("date")["confidence"].mean().reset_index().sort_values("date")
-            daily["rolling_mean"] = daily["confidence"].rolling(30, min_periods=1).mean()
-            daily["rolling_std"] = daily["confidence"].rolling(30, min_periods=1).std().fillna(0)
-            daily["upper"] = daily["rolling_mean"] + daily["rolling_std"]
-            daily["lower"] = daily["rolling_mean"] - daily["rolling_std"]
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=pd.concat([daily["date"], daily["date"][::-1]]),
-                y=pd.concat([daily["upper"], daily["lower"][::-1]]),
-                fill="toself", fillcolor="rgba(88, 166, 255, 0.1)", line=dict(width=0), name="Confidence Band"))
-            fig.add_trace(go.Scatter(x=daily["date"], y=daily["confidence"], mode="lines",
-                name="Actual Confidence", line=dict(width=1, color="rgba(127, 127, 127, 0.4)")))
-            fig.add_trace(go.Scatter(x=daily["date"], y=daily["rolling_mean"], mode="lines",
-                name="30-Day Rolling Mean", line=dict(width=2.5, color="#58a6ff")))
-
-            fig = apply_theme(fig, is_dark, height=420, title="Confidence: Actual vs 30-Day Rolling Mean (±1σ)",
-                x_title="Date", y_title="Confidence (%)")
-            fig.update_layout(legend=dict(font=dict(size=10, color=text_color)))
-            st.plotly_chart(fig, use_container_width=True)
-
-    # Weekly Seasonality
-    with roll_row[1]:
-        if len(filtered_df) > 0:
-            fdf = filtered_df.copy()
-            fdf["day_name"] = fdf["date"].dt.day_name()
-            day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-            day_agg = fdf.groupby("day_name")["confidence"].mean().reindex(day_order).reset_index()
-            day_agg.columns = ["Day", "Avg Confidence"]
-            day_colors = ["#f85149", "#ff6b35", "#ffa657", "#58a6ff", "#a5d6ff", "#d2a8ff", "#3fb950"]
-
-            fig = go.Figure(go.Bar(
-                x=day_agg["Day"].str[:3], y=day_agg["Avg Confidence"],
-                marker=dict(color=day_colors),
-                text=day_agg["Avg Confidence"].round(1), textposition="outside",
-                textfont=dict(size=10, color=text_color),
-                hovertemplate="<b>%{x}</b><br>Avg Confidence: %{y:.1f}%<extra></extra>",
-            ))
-            baseline = day_agg["Avg Confidence"].mean()
-            fig.add_hline(y=baseline, line=dict(color="#f85149", width=1.5, dash="dash"),
-                          annotation_text="Baseline", annotation_font=dict(color="#f85149", size=10))
-            fig = apply_theme(fig, is_dark, height=420, title="Weekly Seasonality", y_title="Avg Confidence (%)", show_legend=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-    # ================================
-    # SECTION: DAILY GROWTH & ACTIVITY
-    # ================================
-    st.markdown('<div class="section-header">Daily Growth & Activity</div>', unsafe_allow_html=True)
-    growth_row = st.columns(2)
-
-    with growth_row[0]:
-        if len(filtered_df) > 0:
-            daily_counts = filtered_df.groupby("date").size().reset_index(name="count").sort_values("date")
-            daily_counts["growth"] = daily_counts["count"].pct_change().fillna(0) * 100
-            daily_counts["month"] = daily_counts["date"].dt.to_period("M").dt.to_timestamp()
-            monthly_growth = daily_counts.groupby("month")["growth"].mean().reset_index()
-
-            fig = go.Figure(go.Bar(x=monthly_growth["month"], y=monthly_growth["growth"],
-                marker=dict(color="#58a6ff", line=dict(width=0)),
-                hovertemplate="<b>%{x|%b %Y}</b><br>Avg Growth: %{y:.2f}%<extra></extra>"))
-            fig = apply_theme(fig, is_dark, height=380, title="Avg Daily Growth Rate (%)", y_title="Growth (%)", show_legend=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-    with growth_row[1]:
-        if len(filtered_df) > 0:
-            heat_data = filtered_df.copy()
-            heat_data["month"] = heat_data["date"].dt.strftime("%b")
-            month_order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            heat_agg = heat_data.groupby(["instrument", "month"]).size().reset_index(name="count")
-            heat_pivot = heat_agg.pivot(index="instrument", columns="month", values="count").fillna(0)
-            existing_months = [m for m in month_order if m in heat_pivot.columns]
-            heat_pivot = heat_pivot[existing_months]
-
-            fig = go.Figure(go.Heatmap(
-                z=heat_pivot.values, x=heat_pivot.columns, y=heat_pivot.index,
-                colorscale=[[0, "#0d1117"], [0.5, "#ff6b35"], [1, "#ff8c42"]],
-                hovertemplate="<b>%{y}</b><br>Month: %{x}<br>Count: %{z}<extra></extra>",
-            ))
-            fig = apply_theme(fig, is_dark, height=380, title="Prediction Heatmap (Monthly)", show_legend=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-    # ================================
-    # SECTION: LIVE PREDICTION
-    # ================================
-    st.markdown('<div class="section-header">🎤 Live Instrument Prediction</div>', unsafe_allow_html=True)
-
-    uploaded_file = st.file_uploader("Upload an audio file (WAV, MP3, FLAC)", type=["wav", "mp3", "flac"],
-        help="Upload an audio file to get real-time instrument predictions.")
-
-    if uploaded_file is not None:
-        audio_bytes = uploaded_file.read()
-        uploaded_file.seek(0)
-
-        # Load raw audio for visualizations
-        audio_signal, audio_sr = librosa.load(io.BytesIO(audio_bytes), sr=preproc_config.get("sample_rate", 22050), mono=True)
-        uploaded_file.seek(0)
-        audio_duration = round(len(audio_signal) / audio_sr, 2)
-
-        # ---- Uploaded Audio Info Card ----
+        status_color = "#22c55e" if model_loaded else "#ef4444"
+        status_text = "Loaded" if model_loaded else "Not loaded"
         st.markdown(f"""
-            <div class="metric-card" style="margin-bottom:1.5rem; border-radius:16px;">
-                <h3 style="margin-top:0;">🎧 Uploaded Audio</h3>
-                <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-top:1rem;">
-                    <div style="flex:1; min-width:180px; background:rgba(255,255,255,0.03); border:1px solid #21262d; border-radius:10px; padding:0.8rem 1rem;">
-                        <div style="font-size:0.65rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#ff6b35;">📁 File</div>
-                        <div style="font-size:0.95rem; font-weight:600; color:#e6edf3; margin-top:0.3rem; word-break:break-all;">{uploaded_file.name}</div>
-                    </div>
-                    <div style="flex:1; min-width:120px; background:rgba(255,255,255,0.03); border:1px solid #21262d; border-radius:10px; padding:0.8rem 1rem;">
-                        <div style="font-size:0.65rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#ff6b35;">⏱ Duration</div>
-                        <div style="font-size:1.3rem; font-weight:800; color:#e6edf3; margin-top:0.3rem;">{audio_duration} sec</div>
-                    </div>
-                    <div style="flex:1; min-width:120px; background:rgba(255,255,255,0.03); border:1px solid #21262d; border-radius:10px; padding:0.8rem 1rem;">
-                        <div style="font-size:0.65rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#ff6b35;">🎚 Sample Rate</div>
-                        <div style="font-size:1.3rem; font-weight:800; color:#e6edf3; margin-top:0.3rem;">{audio_sr} Hz</div>
-                    </div>
+            <div style="background:rgba(22,27,45,0.6);border:1px solid rgba(99,102,241,0.15);border-radius:12px;padding:1rem;">
+                <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#8b949e;margin-bottom:0.5rem;">System Status</div>
+                <div style="font-size:0.8rem;color:#e6edf3;line-height:1.8;">
+                    Model: <span style="color:{status_color};font-weight:700;">{status_text}</span><br>
+                    Arch: CustomCNN<br>
+                    Framework: PyTorch<br>
+                    Classes: {len(class_names)}
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
-        st.audio(uploaded_file, format="audio/wav")
-        st.markdown("")
+        st.markdown("---")
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state["password_correct"] = False
+            st.rerun()
 
-        # ---- Audio Analysis Dashboard: Waveform + Spectrogram ----
-        st.markdown('<div class="section-header">📊 Audio Analysis Dashboard</div>', unsafe_allow_html=True)
-        viz_col1, viz_col2 = st.columns(2)
+    # Header
+    st.markdown("""
+        <div style="text-align:center;padding:1.5rem 0 0.5rem;">
+            <div style="font-size:2.5rem;font-weight:900;
+                background:linear-gradient(135deg,#818cf8 0%,#6366f1 30%,#f97316 70%,#fb923c 100%);
+                -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+                background-clip:text;letter-spacing:-0.02em;line-height:1.2;">
+                🎵 InstruNet Dashboard
+            </div>
+            <div style="font-size:0.95rem;color:#94a3b8;font-weight:400;margin-top:0.3rem;">
+                Production-Level CNN Music Instrument Recognition System
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-        with viz_col1:
-            # Waveform Image
-            fig_wave, ax_wave = plt.subplots(figsize=(6, 3), facecolor="#0d1117" if is_dark else "#f6f8fa")
-            ax_wave.set_facecolor("#161b22" if is_dark else "#ffffff")
-            librosa.display.waveshow(y=audio_signal, sr=audio_sr, ax=ax_wave, color="#58a6ff" if is_dark else "#1f77b4")
-            ax_wave.set_title("📈 Waveform", color="#e6edf3" if is_dark else "#1f2328", fontsize=12, pad=10, fontweight="bold")
-            ax_wave.set_xlabel("Time (s)", color="#8b949e" if is_dark else "#656d76", fontsize=9)
-            ax_wave.set_ylabel("Amplitude", color="#8b949e" if is_dark else "#656d76", fontsize=9)
-            ax_wave.tick_params(colors="#8b949e" if is_dark else "#656d76", labelsize=8)
-            for spine in ax_wave.spines.values():
-                spine.set_color("#30363d" if is_dark else "#d0d7de")
-            fig_wave.tight_layout()
-            
-            buf_wave = io.BytesIO()
-            fig_wave.savefig(buf_wave, format="png", dpi=120, bbox_inches="tight")
-            plt.close(fig_wave)
-            
-            st.image(buf_wave, use_column_width=True)
+    st.markdown("")
 
-        with viz_col2:
-            # Mel Spectrogram Image
-            mel_spec = librosa.feature.melspectrogram(y=audio_signal, sr=audio_sr, n_mels=128, hop_length=512)
-            mel_db = librosa.power_to_db(mel_spec, ref=np.max)
-            
-            fig_spec, ax_spec = plt.subplots(figsize=(6, 3), facecolor="#0d1117" if is_dark else "#f6f8fa")
-            ax_spec.set_facecolor("#161b22" if is_dark else "#ffffff")
-            img = librosa.display.specshow(mel_db, x_axis='time', y_axis='mel', sr=audio_sr, hop_length=512, cmap='magma', ax=ax_spec)
-            
-            ax_spec.set_title("🌈 Mel Spectrogram", color="#e6edf3" if is_dark else "#1f2328", fontsize=12, pad=10, fontweight="bold")
-            ax_spec.set_xlabel("Time (s)", color="#8b949e" if is_dark else "#656d76", fontsize=9)
-            ax_spec.set_ylabel("Hz", color="#8b949e" if is_dark else "#656d76", fontsize=9)
-            ax_spec.tick_params(colors="#8b949e" if is_dark else "#656d76", labelsize=8)
-            
-            # Subtly darker spines
-            for spine in ax_spec.spines.values():
-                spine.set_color("#30363d" if is_dark else "#d0d7de")
-            
-            # Optional colorbar matching the theme
-            cbar = fig_spec.colorbar(img, ax=ax_spec, format='%+2.0f dB')
-            cbar.ax.tick_params(colors="#8b949e" if is_dark else "#656d76", labelsize=8)
-            cbar.outline.set_edgecolor("#30363d" if is_dark else "#d0d7de")
-            
-            fig_spec.tight_layout()
-            
-            buf_spec = io.BytesIO()
-            fig_spec.savefig(buf_spec, format="png", dpi=120, bbox_inches="tight")
-            plt.close(fig_spec)
-            
-            st.image(buf_spec, use_column_width=True)
+    # Tabs
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Model Overview", "🎤 Live Prediction", "📁 Batch Prediction", "📈 Prediction History"
+    ])
 
-        st.markdown("")
-
-        # ---- Prediction + Timeline ----
-        if model_loaded:
-            with st.spinner("🔍 Analyzing audio..."):
-                uploaded_file.seek(0)
-                audio_bytes_pred = uploaded_file.read()
-                uploaded_file.seek(0)
-                try:
-                    tensors, _, _ = preprocess_audio(audio_bytes_pred, preproc_config)
-                    all_probs = []
-                    device = torch.device("cpu")
-                    with torch.no_grad():
-                        for t in tensors:
-                            output = model(t.to(device))
-                            probs = torch.softmax(output, dim=1).cpu().numpy()[0]
-                            all_probs.append(probs)
-
-                    timeline_data = np.array(all_probs)
-                    avg_probs = np.mean(timeline_data, axis=0)
-
-                    predictions = []
-                    for i, cls in enumerate(class_names):
-                        predictions.append({
-                            "Instrument": instr_names.get(cls, cls),
-                            "Confidence": round(float(avg_probs[i]) * 100, 2),
-                        })
-                    pred_df = pd.DataFrame(predictions).sort_values("Confidence", ascending=False)
-                    top = pred_df.iloc[0]
-
-                    # ---- Top Prediction Card ----
-                    pred_col1, pred_col2 = st.columns(2)
-
-                    with pred_col1:
-                        st.markdown(metric_card("Detected Instrument", top["Instrument"], f"{top['Confidence']}% confidence"), unsafe_allow_html=True)
-
-                        st.markdown("")
-
-                        # Prediction bar chart
-                        fig_pred = go.Figure(go.Bar(
-                            x=pred_df["Confidence"], y=pred_df["Instrument"], orientation="h",
-                            marker=dict(color=["#3fb950" if c >= threshold else "#f85149" for c in pred_df["Confidence"]]),
-                            text=pred_df["Confidence"].astype(str) + "%", textposition="outside",
-                            textfont=dict(size=10, color=text_color),
-                        ))
-                        fig_pred.add_vline(x=threshold, line=dict(color="#ffa657", width=2, dash="dash"),
-                                      annotation_text=f"Threshold ({threshold}%)", annotation_font=dict(color="#ffa657", size=10))
-                        fig_pred = apply_theme(fig_pred, is_dark, height=400, title="Prediction Confidence",
-                            x_title="Confidence (%)", x_range=[0, 105], show_legend=False)
-                        st.plotly_chart(fig_pred, use_container_width=True)
-
-                    with pred_col2:
-                        # ---- Present / Not Present Instruments ----
-                        present_instr = [p for _, p in pred_df.iterrows() if p["Confidence"] >= threshold]
-                        absent_instr = [p for _, p in pred_df.iterrows() if p["Confidence"] < threshold]
-
-                        st.markdown(f"""
-                            <div class="metric-card" style="margin-bottom:1rem;">
-                                <div class="metric-label">✅ Present Instruments</div>
-                                <div class="metric-value" style="font-size:1.4rem;">{len(present_instr)}</div>
-                                <div class="metric-sub">Above {threshold}% threshold</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-
-                        for p in present_instr:
-                            conf = p["Confidence"]
-                            bar_color = "#3fb950"
-                            st.markdown(f"""
-                                <div style="background:rgba(63,185,80,0.06); border:1px solid rgba(63,185,80,0.2); border-left:3px solid #3fb950; border-radius:10px; padding:0.7rem 1rem; margin-bottom:0.5rem;">
-                                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                                        <span style="font-weight:700; color:#e6edf3;">{p['Instrument']}</span>
-                                        <span style="background:rgba(63,185,80,0.15); color:#3fb950; padding:2px 10px; border-radius:20px; font-size:0.65rem; font-weight:700; text-transform:uppercase;">Present</span>
-                                    </div>
-                                    <div style="color:#8b949e; font-size:0.8rem; margin:0.3rem 0 0.4rem;">Confidence: <strong style="color:#e6edf3;">{conf}%</strong></div>
-                                    <div style="width:100%; height:5px; background:rgba(63,185,80,0.1); border-radius:3px; overflow:hidden;">
-                                        <div style="width:{conf}%; height:100%; background:linear-gradient(90deg, #3fb950, #7ee787); border-radius:3px;"></div>
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-
-                        if absent_instr:
-                            st.markdown(f"""
-                                <div class="metric-card" style="margin-top:1rem; margin-bottom:0.5rem;">
-                                    <div class="metric-label">❌ Not Present</div>
-                                    <div class="metric-value" style="font-size:1.4rem;">{len(absent_instr)}</div>
-                                    <div class="metric-sub-red">Below {threshold}% threshold</div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            for p in absent_instr:
-                                conf = p["Confidence"]
-                                st.markdown(f"""
-                                    <div style="background:rgba(248,81,73,0.04); border:1px solid rgba(248,81,73,0.15); border-left:3px solid #f85149; border-radius:10px; padding:0.7rem 1rem; margin-bottom:0.5rem; opacity:0.7;">
-                                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                                            <span style="font-weight:700; color:#e6edf3;">{p['Instrument']}</span>
-                                            <span style="background:rgba(248,81,73,0.15); color:#f85149; padding:2px 10px; border-radius:20px; font-size:0.65rem; font-weight:700; text-transform:uppercase;">Not Present</span>
-                                        </div>
-                                        <div style="color:#8b949e; font-size:0.8rem; margin:0.3rem 0 0.4rem;">Confidence: <strong style="color:#e6edf3;">{conf}%</strong></div>
-                                        <div style="width:100%; height:5px; background:rgba(248,81,73,0.1); border-radius:3px; overflow:hidden;">
-                                            <div style="width:{conf}%; height:100%; background:linear-gradient(90deg, #f85149, #ff7b72); border-radius:3px;"></div>
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-
-                    # ---- Instrument Activity Timeline ----
-                    if timeline_data.shape[0] > 1:
-                        st.markdown('<div class="section-header">⏱ Instrument Activity Timeline</div>', unsafe_allow_html=True)
-                        st.markdown(f"<p style='color:#8b949e; font-size:0.85rem;'>Confidence of detected instruments across time segments</p>", unsafe_allow_html=True)
-
-                        segment_duration = preproc_config.get("duration_seconds", 3)
-                        readable_names = [instr_names.get(c, c) for c in class_names]
-                        n_seg = timeline_data.shape[0]
-                        x_time = np.arange(n_seg) * segment_duration
-
-                        fig_tl = go.Figure()
-                        for i, (name, color) in enumerate(zip(readable_names, INSTRUMENT_COLORS[:len(readable_names)])):
-                            fig_tl.add_trace(go.Scatter(
-                                x=x_time, y=timeline_data[:, i] * 100, mode="lines+markers",
-                                name=name, line=dict(width=2.5, color=color),
-                                marker=dict(size=4),
-                                hovertemplate=f"<b>{name}</b><br>Time: %{{x}}s<br>Confidence: %{{y:.1f}}%<extra></extra>",
-                            ))
-                        fig_tl.add_hline(y=threshold, line=dict(color="#ffa657", width=2, dash="dash"),
-                                         annotation_text=f"Threshold ({threshold}%)", annotation_font=dict(color="#ffa657", size=11))
-                        fig_tl = apply_theme(fig_tl, is_dark, height=450, title="Instrument Activity Over Time",
-                                             x_title="Time (s)", y_title="Confidence (%)")
-                        fig_tl.update_layout(legend=dict(font=dict(size=10, color=text_color), bgcolor="rgba(0,0,0,0)"))
-                        st.plotly_chart(fig_tl, use_container_width=True)
-
-                except Exception as e:
-                    st.error(f"Error during prediction: {e}")
-        elif not model_loaded:
-            st.warning("⚠️ Model not loaded. Cannot make predictions.")
+    with tab1:
+        render_model_overview(bundle, class_names, instr_names)
+    with tab2:
+        render_live_prediction(model, bundle, model_loaded)
+    with tab3:
+        render_batch_prediction(model, bundle, model_loaded)
+    with tab4:
+        render_prediction_history()
 
     # Footer
-    st.markdown("---")
-    st.markdown(
-        "<p style='text-align:center; color:#8b949e; font-size:0.75rem;'>"
-        "🎵 InstruNet Dashboard • CNN-Based Music Instrument Recognition • EfficientNet-B0 • PyTorch</p>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("""
+        <div class="app-footer">
+            🎵 InstruNet Dashboard v2.0 • CNN-Based Music Instrument Recognition • CustomCNN • PyTorch
+        </div>
+    """, unsafe_allow_html=True)
 
 
+# ============================================
+# LOGIN SYSTEM — Premium Design
+# ============================================
 def check_password():
-    """Returns `True` if the user had the correct password."""
-
-    # Initialize session state for user database and mode
     if "users" not in st.session_state:
         st.session_state["users"] = {"admin": "admin123"}
     if "login_mode" not in st.session_state:
@@ -839,7 +1041,7 @@ def check_password():
             p = st.session_state.get("password", "")
             if u in st.session_state["users"] and st.session_state["users"][u] == p:
                 st.session_state["password_correct"] = True
-                del st.session_state["password"]  
+                del st.session_state["password"]
                 del st.session_state["username"]
             else:
                 st.session_state["password_correct"] = False
@@ -863,170 +1065,211 @@ def check_password():
         st.session_state["login_mode"] = "signup" if st.session_state["login_mode"] == "login" else "login"
         st.session_state["password_correct"] = None
 
-    # Apply global dark theme mirroring the sleek ChatGPT login approach
-    st.markdown(
-        """
-        <style>
-        .stApp { background-color: #202123 !important; color: #ffffff !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; }
-        .login-wrapper {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-top: 15vh;
-        }
-        .login-container {
-            width: 100%;
-            max-width: 320px;
-            text-align: center; margin: auto;
-        }
-        .login-logo {
-            margin-bottom: 2rem;
-            display: inline-block;
-        }
-        .login-container h2 {
-            color: #ffffff;
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-            line-height: 1.2;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-        
-        /* Flatten Streamlit form to look like generic inputs */
-        [data-testid="stForm"] {
-            border: none !important;
-            padding: 0 !important;
-            background-color: transparent !important;
-            box-shadow: none !important;
-        }
-        /* Custom Inputs */
-        [data-testid="stTextInput"] input {
-            background-color: transparent !important;
-            border: 1px solid #4d4d4f !important;
+    # Premium Login CSS
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        .stApp {
+            background: #050816 !important;
             color: #ffffff !important;
-            border-radius: 4px !important;
-            padding: 14px 16px !important;
-            font-size: 16px !important;
-            transition: border-color 0.15s ease-in-out !important;
-            margin-bottom: 0.2rem;
+            font-family: 'Inter', sans-serif !important;
+            overflow: hidden;
+        }
+        /* Animated orbs */
+        .login-orb-1, .login-orb-2, .login-orb-3 {
+            position: fixed; border-radius: 50%; filter: blur(100px);
+            pointer-events: none; z-index: 0;
+        }
+        .login-orb-1 {
+            width: 500px; height: 500px; top: -100px; left: -50px;
+            background: radial-gradient(circle, rgba(99,102,241,0.4) 0%, transparent 70%);
+            animation: orb1 15s ease-in-out infinite;
+        }
+        .login-orb-2 {
+            width: 400px; height: 400px; bottom: -80px; right: -30px;
+            background: radial-gradient(circle, rgba(249,115,22,0.35) 0%, transparent 70%);
+            animation: orb2 18s ease-in-out infinite;
+        }
+        .login-orb-3 {
+            width: 300px; height: 300px; top: 40%; left: 50%;
+            background: radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 70%);
+            animation: orb3 12s ease-in-out infinite;
+        }
+        @keyframes orb1 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(80px,60px) scale(1.1)} }
+        @keyframes orb2 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-60px,-40px) scale(1.15)} }
+        @keyframes orb3 { 0%,100%{transform:translate(-50%,-50%) scale(1)} 50%{transform:translate(-50%,-50%) scale(0.85)} }
+
+        /* Glass login card */
+        .login-glass {
+            background: rgba(15, 20, 40, 0.6);
+            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(99,102,241,0.2);
+            border-radius: 24px; padding: 2.5rem 2rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+            max-width: 400px; width: 100%; margin: 0 auto;
+            position: relative; z-index: 1;
+        }
+        .login-glass::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, #6366f1, #a855f7, #f97316);
+            border-radius: 24px 24px 0 0;
+        }
+        .login-brand {
+            font-size: 2.8rem; font-weight: 900; text-align: center;
+            background: linear-gradient(135deg, #818cf8 0%, #6366f1 40%, #f97316 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 0.3rem; letter-spacing: -0.02em;
+        }
+        .login-subtitle {
+            text-align: center; color: #64748b; font-size: 0.85rem;
+            margin-bottom: 2rem; font-weight: 400;
+        }
+        .login-heading {
+            text-align: center; color: #e2e8f0; font-size: 1.4rem;
+            font-weight: 700; margin-bottom: 1.5rem;
+        }
+
+        /* Form styling */
+        [data-testid="stForm"] {
+            border: none !important; padding: 0 !important;
+            background-color: transparent !important; box-shadow: none !important;
+        }
+        [data-testid="stTextInput"] input {
+            background: rgba(15, 23, 42, 0.8) !important;
+            border: 1px solid rgba(99,102,241,0.25) !important;
+            color: #ffffff !important; border-radius: 12px !important;
+            padding: 14px 18px !important; font-size: 15px !important;
+            font-family: 'Inter', sans-serif !important;
+            transition: all 0.3s ease !important;
         }
         [data-testid="stTextInput"] input:focus {
-            border-color: #10a37f !important;
-            box-shadow: none !important;
+            border-color: #818cf8 !important;
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
         }
-        /* Primary Button inside form */
+        [data-testid="stTextInput"] input::placeholder { color: #475569 !important; }
+
+        /* Submit button */
         [data-testid="stForm"] .stButton>button {
             width: 100%;
-            background-color: #10a37f !important;
-            color: white !important;
-            border: none !important;
-            border-radius: 4px !important;
-            padding: 14px !important;
-            font-weight: 500 !important;
-            font-size: 16px !important;
-            margin-top: 1.5rem !important;
-            transition: background-color 0.2s !important;
+            background: linear-gradient(135deg, #6366f1 0%, #7c3aed 50%, #a855f7 100%) !important;
+            color: white !important; border: none !important;
+            border-radius: 12px !important; padding: 14px !important;
+            font-weight: 700 !important; font-size: 15px !important;
+            margin-top: 1rem !important; letter-spacing: 0.02em;
+            transition: all 0.3s ease !important;
+            box-shadow: 0 4px 15px rgba(99,102,241,0.3) !important;
         }
         [data-testid="stForm"] .stButton>button:hover {
-            background-color: #1a7f64 !important;
-        }
-        /* Toggle Buttons outside form */
-        .login-container .stButton>button {
-            width: 100%;
-            background-color: transparent !important;
-            color: #10a37f !important;
-            border: none !important;
-            padding: 8px !important;
-            font-size: 14px !important;
-            box-shadow: none !important;
-        }
-        .login-container .stButton>button:hover {
-            text-decoration: underline !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 0 6px 25px rgba(99,102,241,0.45) !important;
         }
 
-        .error-message {
-            background-color: rgba(239,68,68, 0.1);
-            color: #ef4444;
-            border: 1px solid rgba(239,68,68, 0.3);
-            padding: 12px;
-            border-radius: 4px;
-            font-size: 14px;
-            text-align: left;
-            margin-bottom: 1rem;
+        /* Toggle button */
+        .login-toggle .stButton>button {
+            width: 100%; background: transparent !important;
+            color: #818cf8 !important; border: 1px solid rgba(99,102,241,0.2) !important;
+            border-radius: 12px !important; padding: 10px !important;
+            font-size: 14px !important; font-weight: 600 !important;
+            box-shadow: none !important; transition: all 0.3s ease !important;
         }
-        .success-message {
-            background-color: rgba(16,163,127, 0.1);
-            color: #10a37f;
-            border: 1px solid rgba(16,163,127, 0.3);
-            padding: 12px;
-            border-radius: 4px;
-            font-size: 14px;
-            text-align: left;
-            margin-bottom: 1rem;
+        .login-toggle .stButton>button:hover {
+            background: rgba(99,102,241,0.08) !important;
+            border-color: #818cf8 !important;
+        }
+
+        .error-msg {
+            background: rgba(239,68,68,0.08); color: #f87171;
+            border: 1px solid rgba(239,68,68,0.2);
+            padding: 12px 16px; border-radius: 12px; font-size: 13px;
+            margin-bottom: 1rem; backdrop-filter: blur(8px);
+        }
+        .success-msg {
+            background: rgba(34,197,94,0.08); color: #4ade80;
+            border: 1px solid rgba(34,197,94,0.2);
+            padding: 12px 16px; border-radius: 12px; font-size: 13px;
+            margin-bottom: 1rem; backdrop-filter: blur(8px);
         }
         .toggle-text {
-            color: #8e8ea0;
-            font-size: 14px;
-            margin-top: 2rem;
-            margin-bottom: -0.5rem;
+            color: #64748b; font-size: 13px; text-align: center;
+            margin-top: 1.5rem; margin-bottom: 0.3rem;
         }
-        </style>
-        """, unsafe_allow_html=True
-    )
 
-    logo_svg = '''
-    <div class="login-logo">
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2.5L2 7.5L12 12.5L22 7.5L12 2.5Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
-            <path d="M2 16.5L12 21.5L22 16.5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
-            <path d="M2 11.5L12 16.5L22 11.5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
-        </svg>
-    </div>
-    '''
+        /* Feature pills */
+        .feature-row {
+            display: flex; gap: 8px; justify-content: center;
+            flex-wrap: wrap; margin-top: 1.5rem;
+        }
+        .feature-pill {
+            background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.15);
+            border-radius: 20px; padding: 5px 14px;
+            font-size: 0.7rem; color: #94a3b8; font-weight: 500;
+        }
+
+        #MainMenu {visibility:hidden;} footer {visibility:hidden;} header {visibility:hidden;}
+    </style>
+    """, unsafe_allow_html=True)
 
     if st.session_state.get("password_correct", False):
         return True
 
     mode = st.session_state["login_mode"]
 
-    st.markdown('<div class="login-wrapper"><div class="login-container">', unsafe_allow_html=True)
-    st.markdown(logo_svg, unsafe_allow_html=True)
+    # Animated orbs
+    st.markdown('<div class="login-orb-1"></div><div class="login-orb-2"></div><div class="login-orb-3"></div>', unsafe_allow_html=True)
+
+    # Spacer
+    st.markdown('<div style="height:8vh;"></div>', unsafe_allow_html=True)
+
+    # Glass card start
+    st.markdown('<div class="login-glass">', unsafe_allow_html=True)
+    st.markdown('<div class="login-brand">🎵 InstruNet</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-subtitle">AI-Powered Music Instrument Recognition</div>', unsafe_allow_html=True)
 
     if mode == "login":
-        st.markdown('<h2>Welcome back</h2>', unsafe_allow_html=True)
-        
-        if st.session_state.get("signup_success", False):
-            st.markdown('<div class="success-message">Account created! Please log in.</div>', unsafe_allow_html=True)
-            st.session_state["signup_success"] = False # read-once indicator
-
-        if st.session_state.get("password_correct") == False:
-            st.markdown('<div class="error-message">Wrong email or password. Try again.</div>', unsafe_allow_html=True)
-
+        st.markdown('<div class="login-heading">Welcome back</div>', unsafe_allow_html=True)
+        if st.session_state.get("signup_success"):
+            st.markdown('<div class="success-msg">✅ Account created successfully! Please log in.</div>', unsafe_allow_html=True)
+            st.session_state["signup_success"] = False
+        if st.session_state.get("password_correct") is False:
+            st.markdown('<div class="error-msg">❌ Incorrect username or password. Please try again.</div>', unsafe_allow_html=True)
         with st.form("login_form"):
-            st.text_input("Username", key="username", placeholder="Email address", label_visibility="collapsed")
-            st.text_input("Password", type="password", key="password", placeholder="Password", label_visibility="collapsed")
-            st.form_submit_button("Continue", on_click=form_submitted)
-
+            st.text_input("Username", key="username", placeholder="👤  Enter username", label_visibility="collapsed")
+            st.text_input("Password", type="password", key="password", placeholder="🔒  Enter password", label_visibility="collapsed")
+            st.form_submit_button("Sign In →", on_click=form_submitted)
         st.markdown('<div class="toggle-text">Don\'t have an account?</div>', unsafe_allow_html=True)
-        st.button("Sign up", on_click=toggle_mode, key="toggle_signup")
-
+        st.markdown('<div class="login-toggle">', unsafe_allow_html=True)
+        st.button("Create Account", on_click=toggle_mode, key="toggle_signup")
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<h2>Create your account</h2>', unsafe_allow_html=True)
-
-        if "signup_error" in st.session_state and st.session_state["signup_error"]:
-            st.markdown(f'<div class="error-message">{st.session_state["signup_error"]}</div>', unsafe_allow_html=True)
-            st.session_state["signup_error"] = None # read-once indicator
-
+        st.markdown('<div class="login-heading">Create your account</div>', unsafe_allow_html=True)
+        if st.session_state.get("signup_error"):
+            st.markdown(f'<div class="error-msg">❌ {st.session_state["signup_error"]}</div>', unsafe_allow_html=True)
+            st.session_state["signup_error"] = None
         with st.form("signup_form"):
-            st.text_input("Email", key="reg_username", placeholder="Email address", label_visibility="collapsed")
-            st.text_input("Password", type="password", key="reg_password", placeholder="Password", label_visibility="collapsed")
-            st.text_input("Confirm", type="password", key="reg_confirm", placeholder="Confirm Password", label_visibility="collapsed")
-            st.form_submit_button("Continue", on_click=form_submitted)
-            
+            st.text_input("Username", key="reg_username", placeholder="👤  Choose username", label_visibility="collapsed")
+            st.text_input("Password", type="password", key="reg_password", placeholder="🔒  Create password", label_visibility="collapsed")
+            st.text_input("Confirm", type="password", key="reg_confirm", placeholder="🔒  Confirm password", label_visibility="collapsed")
+            st.form_submit_button("Create Account →", on_click=form_submitted)
         st.markdown('<div class="toggle-text">Already have an account?</div>', unsafe_allow_html=True)
-        st.button("Log in", on_click=toggle_mode, key="toggle_login")
+        st.markdown('<div class="login-toggle">', unsafe_allow_html=True)
+        st.button("Sign In", on_click=toggle_mode, key="toggle_login")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('</div></div>', unsafe_allow_html=True)
+    # Feature pills
+    st.markdown("""
+        <div class="feature-row">
+            <span class="feature-pill">🎵 11 Instruments</span>
+            <span class="feature-pill">🧠 CustomCNN</span>
+            <span class="feature-pill">📊 84% Accuracy</span>
+            <span class="feature-pill">⚡ Real-time</span>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)  # close glass card
+
+    # Footer
+    st.markdown('<p style="text-align:center;color:#334155;font-size:0.7rem;margin-top:2rem;position:relative;z-index:1;">Built with PyTorch & Streamlit • © 2024 InstruNet</p>', unsafe_allow_html=True)
+
     return False
 
 
