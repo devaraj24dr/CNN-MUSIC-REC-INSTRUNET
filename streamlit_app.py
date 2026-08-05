@@ -255,12 +255,13 @@ LABELS_PATH = os.path.join(os.path.dirname(__file__), "models", "label_classes.j
 @st.cache_resource
 def load_model():
     try:
+        if not os.path.exists(MODEL_PATH):
+            return None, list(INSTRUMENT_NAMES.keys()), False
         model = tf.keras.models.load_model(MODEL_PATH)
         with open(LABELS_PATH, "r") as f:
             classes = json.load(f)
         return model, classes, True
     except Exception as e:
-        st.error(f"❌ Model loading failed: {e}")
         return None, list(INSTRUMENT_NAMES.keys()), False
 
 # ============================================
@@ -458,6 +459,28 @@ def main():
             </div>
         </div>
     """, unsafe_allow_html=True)
+
+    # Model status banner
+    if not model_loaded:
+        st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, rgba(249,115,22,0.12), rgba(239,68,68,0.10));
+                border: 1px solid rgba(249,115,22,0.35);
+                border-left: 4px solid #f97316;
+                border-radius: 12px; padding: 1rem 1.4rem;
+                margin: 0.5rem 0 1.5rem; display:flex; align-items:center; gap:0.8rem;
+            ">
+                <span style="font-size:1.4rem;">⚠️</span>
+                <div>
+                    <div style="font-weight:700; color:#fb923c; font-size:0.9rem;">Model Not Loaded</div>
+                    <div style="color:#94a3b8; font-size:0.8rem; margin-top:0.2rem;">
+                        The trained <code style="background:rgba(249,115,22,0.15);padding:1px 5px;border-radius:4px;">instrunet_cnn.h5</code>
+                        model file is missing from the <code style="background:rgba(249,115,22,0.15);padding:1px 5px;border-radius:4px;">models/</code> folder.
+                        Audio visualization still works — train &amp; push the model to enable predictions.
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("")
 
