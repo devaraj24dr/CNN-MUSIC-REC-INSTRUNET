@@ -36,5 +36,7 @@ spectrograms/
 *.pkl
 *.joblib
 *.h5
+# Allow our specific model file
+!models/instrunet_cnn.h5
 *.pt
 *.pth
